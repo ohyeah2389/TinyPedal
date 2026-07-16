@@ -651,15 +651,15 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         return self.place(index)
 
     def in_pits(self, index: int | None = None) -> bool:
-        return bool(self._d().carInPit[self._i(index)])
+        return bool(self._d().carInPitlane[self._i(index)])
 
     def in_garage(self, index: int | None = None) -> bool:
-        return False
+        return bool(self._d().carInPit[self._i(index)])
 
     def in_paddock(self, index: int | None = None) -> int:
         if self.in_garage(index):
             return 2
-        if self.in_pits(index) or bool(self._d().carInPitlane[self._i(index)]):
+        if self.in_pits(index):
             return 1
         return 0
 
