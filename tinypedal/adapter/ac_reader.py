@@ -825,10 +825,13 @@ class Wheel(_reader.Wheel, DataAdapter):
         return tuple(radians(rmnan(x)) for x in self._d().camberDeg)
 
     def toe(self, index: int | None = None) -> tuple[float, ...]:
-        return self._zero4()
+        if not self._player(index):
+            return self._zero4()
+        return tuple(radians(rmnan(x)) for x in self._d().toeDeg)
 
     def toe_symmetric(self, index: int | None = None) -> tuple[float, ...]:
-        return self.toe(index)
+        toe = self.toe(index)
+        return (toe[0], -toe[1], toe[2], -toe[3])
 
     def rotation(self, index: int | None = None) -> tuple[float, ...]:
         if not self._player(index):
@@ -836,10 +839,14 @@ class Wheel(_reader.Wheel, DataAdapter):
         return tuple(-abs(rmnan(x)) for x in self._d().wheelAngularSpeed)
 
     def velocity_lateral(self, index: int | None = None) -> tuple[float, ...]:
-        return self._zero4()
+        if not self._player(index):
+            return self._zero4()
+        return tuple(rmnan(x) for x in self._d().wheelVelLat)
 
     def velocity_longitudinal(self, index: int | None = None) -> tuple[float, ...]:
-        return self._zero4()
+        if not self._player(index):
+            return self._zero4()
+        return tuple(rmnan(x) for x in self._d().wheelVelLong)
 
     def slip_angle_fl(self, index: int | None = None) -> float:
         return rmnan(self._d().wheelSlipAngleRad[0]) if self._player(index) else 0.0
