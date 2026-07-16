@@ -664,7 +664,9 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         return tostr(self._meta(index).carID)
 
     def class_name(self, index: int | None = None) -> str:
-        return tostr(self._meta(index).carID)
+        meta = self._meta(index)
+        cls = tostr(meta.carClass)
+        return cls if cls else tostr(meta.carID)
 
     def same_class(self, index: int | None = None) -> bool:
         return self.class_name(index) == self.class_name(None)
