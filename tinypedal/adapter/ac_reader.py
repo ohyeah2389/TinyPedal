@@ -835,16 +835,16 @@ class Wheel(_reader.Wheel, DataAdapter):
         return self._zero4()
 
     def slip_angle_fl(self, index: int | None = None) -> float:
-        return rmnan(self._d().wheelSlip[0]) if self._player(index) else 0.0
+        return rmnan(self._d().wheelSlipAngleRad[0]) if self._player(index) else 0.0
 
     def slip_angle_fr(self, index: int | None = None) -> float:
-        return rmnan(self._d().wheelSlip[1]) if self._player(index) else 0.0
+        return rmnan(self._d().wheelSlipAngleRad[1]) if self._player(index) else 0.0
 
     def slip_angle_rl(self, index: int | None = None) -> float:
-        return rmnan(self._d().wheelSlip[2]) if self._player(index) else 0.0
+        return rmnan(self._d().wheelSlipAngleRad[2]) if self._player(index) else 0.0
 
     def slip_angle_rr(self, index: int | None = None) -> float:
-        return rmnan(self._d().wheelSlip[3]) if self._player(index) else 0.0
+        return rmnan(self._d().wheelSlipAngleRad[3]) if self._player(index) else 0.0
 
     def ride_height(self, index: int | None = None) -> tuple[float, ...]:
         if not self._player(index):
