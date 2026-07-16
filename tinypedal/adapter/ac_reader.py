@@ -450,10 +450,16 @@ class Timing(_reader.Timing, DataAdapter):
         return max(rmnan(ms) / 1000.0, 0.0)
 
     def elapsed(self, index: int | None = None) -> float:
-        return rmnan(self._d().simTimeMs) / 1000.0
+        d = self._d()
+        if self._player(index):
+            return rmnan(d.simTimeMs) / 1000.0
+        i = self._i(index)
+        return max((rmnan(d.carLapStartMs[i]) + rmnan(d.carLapTimeMs[i])) / 1000.0, 0.0)
 
     def current_laptime(self, index: int | None = None) -> float:
-        return max(self.elapsed(index) - self.start(index), 0.0)
+        d = self._d()
+        ms = d.playerLapTimeMs if self._player(index) else d.carLapTimeMs[self._i(index)]
+        return max(rmnan(ms) / 1000.0, 0.0)
 
     def last_laptime(self, index: int | None = None) -> float:
         d = self._d()
@@ -470,9 +476,24 @@ class Timing(_reader.Timing, DataAdapter):
         return best if best > 0 else laptime
 
     def estimated_laptime(self, index: int | None = None) -> float:
-        return self.current_laptime(index)
+        d = self._d()
+        ms = d.playerEstimatedLapTimeMs if self._player(index) else d.carEstimatedLapTimeMs[self._i(index)]
+        estimate = max(rmnan(ms) / 1000.0, 0.0)
+        if estimate > 1.0:
+            return estimate
+        for value in (self.best_laptime(index), self.last_laptime(index)):
+            if value > 1.0:
+                return value
+        return 0.0
 
     def estimated_time_into(self, index: int | None = None) -> float:
+        if self._player(index):
+            return self.current_laptime(index)
+        d = self._d()
+        est_lap = self.estimated_laptime(index)
+        if est_lap > 1.0:
+            progress = min(max(rmnan(d.carSplinePosition[self._i(index)]), 0.0), 1.0)
+            return progress * est_lap
         return self.current_laptime(index)
 
     def current_sector1(self, index: int | None = None) -> float:
