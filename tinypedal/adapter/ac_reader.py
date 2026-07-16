@@ -400,7 +400,12 @@ class Switch(_reader.Switch, DataAdapter):
         return int(self._d().playerABSMode if self._player(index) else 0)
 
     def motor_map_level(self, index: int | None = None) -> int:
-        return 0
+        if not self._player(index):
+            return -1
+        d = self._d()
+        if not d.playerMgukDeliveryCount:
+            return -1
+        return int(d.playerMgukDelivery)
 
     def brake_migration_level(self, index: int | None = None) -> int:
         return 0
