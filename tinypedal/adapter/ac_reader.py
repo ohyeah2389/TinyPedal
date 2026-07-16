@@ -503,13 +503,11 @@ class Timing(_reader.Timing, DataAdapter):
         return 0.0
 
     def estimated_time_into(self, index: int | None = None) -> float:
-        if self._player(index):
-            return self.current_laptime(index)
-        d = self._d()
-        est_lap = self.estimated_laptime(index)
+        est_lap = self.estimated_laptime() # use player estimation for all cars; using each car's estimation introduces drift
         if est_lap > 1.0:
-            progress = min(max(rmnan(d.carSplinePosition[self._i(index)]), 0.0), 1.0)
-            return progress * est_lap
+            d = self._d()
+            pos = d.playerSplinePosition if self._player(index) else d.carSplinePosition[self._i(index)]
+            return min(max(rmnan(pos), 0.0), 1.0) * est_lap
         return self.current_laptime(index)
 
     def current_sector1(self, index: int | None = None) -> float:
