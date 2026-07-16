@@ -117,7 +117,7 @@ class ElectricMotor(_reader.ElectricMotor, DataAdapter):
         return rmnan(self._d().playerWaterTemp if self._player(index) else 0.0)
 
     def regeneration_level(self, index: int | None = None) -> float:
-        return rmnan(self._d().playerMgukRecovery if self._player(index) else 0.0)
+        return rmnan((self._d().playerMgukRecovery / 10) if self._player(index) else 0.0)
 
 #MARK: Engine
 class Engine(_reader.Engine, DataAdapter):
