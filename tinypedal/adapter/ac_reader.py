@@ -293,7 +293,7 @@ class Session(_reader.Session, DataAdapter):
         return (d.sessionType, d.sessionIndex, int(d.sessionTimestamp))
 
     def elapsed(self) -> float:
-        return rmnan(self._d().simTimeMs) / 1000.0
+        return rmnan(self._d().sessionElapsedMs) / 1000.0
 
     def start(self) -> float:
         return 0.0
@@ -372,7 +372,7 @@ class Session(_reader.Session, DataAdapter):
         return rmnan(self._d().roadGrip)
 
     def track_time(self) -> float:
-        return self.elapsed()
+        return rmnan(self._d().trackTimeSec)
 
     def time_scale(self) -> int:
         return int(max(self._d().timeMultiplier, 1))
