@@ -68,7 +68,9 @@ class Brake(_reader.Brake, DataAdapter):
     __slots__ = ()
 
     def bias_front(self, index: int | None = None) -> float:
-        return 0.5
+        if not self._player(index):
+            return 0.5
+        return rmnan(self._d().playerBrakeBias)
 
     def migration(self, index: int | None = None) -> float:
         return 0.0
