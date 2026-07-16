@@ -4,7 +4,7 @@ TinyPedal is a Free and Open Source telemetry overlay application for racing sim
 
 Focuses on minimalist design, light-weight and efficiency, extensive customization and data analysis. Features a large collection of highly configurable overlay widgets and data modules, advanced fuel calculator and editing tools.
 
-Currently supports `rFactor 2` and `Le Mans Ultimate`, and runs on `Windows` and `Linux`.
+Currently supports `rFactor 2`, `Le Mans Ultimate`, and `Assetto Corsa`, and runs on `Windows` and `Linux`.
 
 [Download](https://github.com/TinyPedal/TinyPedal/releases) -
 [Quick Start](#quick-start) -
@@ -24,6 +24,7 @@ Currently supports `rFactor 2` and `Le Mans Ultimate`, and runs on `Windows` and
 |:-:|:-:|:-:|
 | Le Mans Ultimate | No plugin required | Requires third-party plugin |
 | rFactor 2 | rF2SharedMemoryMapPlugin | rF2SharedMemoryMapPlugin(Wine) |
+| Assetto Corsa | TinyPedalConnector | TinyPedalConnector |
 
 ### Display Mode
 
@@ -67,6 +68,14 @@ After plugin enabled, must `restart game` to take effect.
 
 Note, if game cannot generate `rFactor2SharedMemoryMapPlugin64.dll` entry in `CustomPluginVariables.JSON` file, make sure `VC12 (Visual C++ 2013) runtime` is installed, which can be found in game's `Support\Runtimes` folder.
 
+### Setup for Assetto Corsa
+
+#### Windows
+
+To export the required telemetry data from AC over shared memory, the addon Custom Shaders Patch is required, and an included Lua app `TinyPedalConnector` is required to be installed into AC. 
+
+The app will be run automatically in the background once installed, and its window does not need to be open for it to run.
+
 ## Quick Start
 
 > [!IMPORTANT]
@@ -97,6 +106,7 @@ Note, if game cannot generate `rFactor2SharedMemoryMapPlugin64.dll` entry in `Cu
 * PySide2
 * pyLMUSharedMemory
 * pyRfactor2SharedMemory
+* pyACSharedMemory
 * psutil
 
 > [!IMPORTANT]
@@ -113,6 +123,7 @@ Download TinyPedal source code from [Releases](https://github.com/TinyPedal/Tiny
 Download submodule source code from following links:
 - pyLMUSharedMemory: https://github.com/TinyPedal/pyLMUSharedMemory
 - pyRfactor2SharedMemory: https://github.com/TinyPedal/pyRfactor2SharedMemory
+- pyACSharedMemory: https://github.com/ohyeah2389/pyACSharedMemory note: replace this with TinyPedal's fork if and once it is created
 
 Extract TinyPedal source code ZIP file. Then extract submodule ZIP files and put them in corresponding folder in the root folder of TinyPedal.
 
