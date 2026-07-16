@@ -72,7 +72,7 @@ class Brake(_reader.Brake, DataAdapter):
             return 0.5
         return rmnan(self._d().playerBrakeBias)
 
-    def migration(self, index: int | None = None) -> float:
+    def migration(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
     def pressure(self, index: int | None = None, scale: float = 1) -> tuple[float, ...]:
@@ -86,7 +86,7 @@ class Brake(_reader.Brake, DataAdapter):
             return self._zero4()
         return tuple(rmnan(x) for x in self._d().brakeTemperature)
 
-    def wear(self, index: int | None = None) -> tuple[float, ...]:
+    def wear(self, index: int | None = None) -> tuple[float, ...]: # TODO: implement
         return self._zero4()
 
 #MARK: ElectricMotor
@@ -104,13 +104,13 @@ class ElectricMotor(_reader.ElectricMotor, DataAdapter):
     def battery_charge(self, index: int | None = None) -> float:
         return rmnan(self._d().playerKersCharge if self._player(index) else 0.0)
 
-    def rpm(self, index: int | None = None) -> float:
+    def rpm(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
-    def torque(self, index: int | None = None) -> float:
+    def torque(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
-    def motor_temperature(self, index: int | None = None) -> float:
+    def motor_temperature(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
     def water_temperature(self, index: int | None = None) -> float:
@@ -154,7 +154,7 @@ class Engine(_reader.Engine, DataAdapter):
     def water_temperature(self, index: int | None = None) -> float:
         return rmnan(self._d().playerWaterTemp if self._player(index) else 0.0)
 
-    def lift_and_coast_progress(self, index: int | None = None) -> float:
+    def lift_and_coast_progress(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
     def fuel(self, index: int | None = None) -> float:
@@ -170,10 +170,10 @@ class Engine(_reader.Engine, DataAdapter):
     def tank_capacity(self, index: int | None = None) -> float:
         return rmnan(self._d().playerMaxFuel if self._player(index) else 0.0)
 
-    def virtual_energy(self, index: int | None = None) -> float:
+    def virtual_energy(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
-    def max_virtual_energy(self) -> float:
+    def max_virtual_energy(self) -> float: # TODO: implement
         return 0.0
 
 #MARK: Inputs
@@ -268,13 +268,13 @@ class Lap(_reader.Lap, DataAdapter):
     def behind_leader(self, index: int | None = None) -> int:
         return max(self._d().leaderCompletedLaps - self.completed_laps(index), 0)
 
-    def behind_next(self, index: int | None = None) -> int:
+    def behind_next(self, index: int | None = None) -> int: # TODO: implement
         return 0
 
-    def safety_car_distance(self) -> float:
+    def safety_car_distance(self) -> float: # TODO: implement
         return 0.0
 
-    def safety_car_active(self) -> bool:
+    def safety_car_active(self) -> bool: # TODO: implement
         return False
 
 #MARK: Session
@@ -295,7 +295,7 @@ class Session(_reader.Session, DataAdapter):
     def elapsed(self) -> float:
         return rmnan(self._d().sessionElapsedMs) / 1000.0
 
-    def start(self) -> float:
+    def start(self) -> float: # TODO: implement
         return 0.0
 
     def end(self) -> float:
@@ -319,10 +319,10 @@ class Session(_reader.Session, DataAdapter):
     def in_race(self) -> bool:
         return self.session_type() == 4
 
-    def private_qualifying(self) -> bool:
+    def private_qualifying(self) -> bool: # TODO: implement
         return False
 
-    def pit_open(self) -> bool:
+    def pit_open(self) -> bool: # TODO: implement
         return True
 
     def pre_race(self) -> bool:
@@ -337,7 +337,7 @@ class Session(_reader.Session, DataAdapter):
     def yellow_flag(self) -> bool:
         return self._d().raceFlagType in (2, 3)
 
-    def start_lights(self) -> int:
+    def start_lights(self) -> int: # TODO: implement
         return 0
 
     def track_temperature(self) -> float:
@@ -362,7 +362,7 @@ class Session(_reader.Session, DataAdapter):
         avg = self.wetness_average()
         return (self.wetness_minimum(), self.wetness_maximum(), avg)
 
-    def weather_forecast(self) -> tuple[WeatherNode, ...]:
+    def weather_forecast(self) -> tuple[WeatherNode, ...]: # TODO: implement
         return tuple()
 
     def cloud_coverage(self) -> int:
@@ -377,10 +377,10 @@ class Session(_reader.Session, DataAdapter):
     def time_scale(self) -> int:
         return int(max(self._d().timeMultiplier, 1))
 
-    def limits_points(self) -> float:
+    def limits_points(self) -> float: # TODO: implement
         return 0.0
 
-    def cut_points(self, index: int | None = None) -> float:
+    def cut_points(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
 #MARK: Switch
@@ -393,7 +393,7 @@ class Switch(_reader.Switch, DataAdapter):
     def tc_cut_level(self, index: int | None = None) -> int:
         return int(self._d().playerTC2Mode if self._player(index) else 0)
 
-    def tc_slip_level(self, index: int | None = None) -> int:
+    def tc_slip_level(self, index: int | None = None) -> int: # TODO: implement
         return 0
 
     def abs_level(self, index: int | None = None) -> int:
@@ -407,13 +407,13 @@ class Switch(_reader.Switch, DataAdapter):
             return -1
         return int(d.playerMgukDelivery)
 
-    def brake_migration_level(self, index: int | None = None) -> int:
+    def brake_migration_level(self, index: int | None = None) -> int: # TODO: implement
         return 0
 
-    def front_arb_level(self, index: int | None = None) -> int:
+    def front_arb_level(self, index: int | None = None) -> int: # TODO: implement
         return 0
 
-    def rear_arb_level(self, index: int | None = None) -> int:
+    def rear_arb_level(self, index: int | None = None) -> int: # TODO: implement
         return 0
 
     def wipers(self, index: int | None = None) -> int:
@@ -444,7 +444,7 @@ class Switch(_reader.Switch, DataAdapter):
             return 2
         return 0
 
-    def auto_clutch(self) -> bool:
+    def auto_clutch(self) -> bool: # TODO: implement
         return False
 
 #MARK: Timing
@@ -637,7 +637,7 @@ class Tyre(_reader.Tyre, DataAdapter):
 class Vehicle(_reader.Vehicle, DataAdapter):
     __slots__ = ()
 
-    def incidents(self, index: int | None = None) -> int:
+    def incidents(self, index: int | None = None) -> int: # TODO: implement
         return 0
 
     def is_player(self, index: int = 0) -> bool:
@@ -691,22 +691,22 @@ class Vehicle(_reader.Vehicle, DataAdapter):
             return 1
         return 0
 
-    def number_pitstops(self, index: int | None = None, penalty: int = 0) -> int:
+    def number_pitstops(self, index: int | None = None, penalty: int = 0) -> int: # TODO: implement
         return 0
 
-    def number_penalties(self, index: int | None = None) -> int:
+    def number_penalties(self, index: int | None = None) -> int: # TODO: implement
         return 0
 
     def pit_request(self, index: int | None = None) -> bool:
         return bool(self._d().carInPitlane[self._i(index)])
 
-    def pit_stop_time(self) -> float:
+    def pit_stop_time(self) -> float: # TODO: implement
         return 0.0
 
-    def absolute_refill(self) -> float:
+    def absolute_refill(self) -> float: # TODO: implement
         return 0.0
 
-    def stint_usage(self, driver_name: str) -> tuple[float, float, float, float, int]:
+    def stint_usage(self, driver_name: str) -> tuple[float, float, float, float, int]: # TODO: implement
         return STINT_USAGE_DEFAULT
 
     def finish_state(self, index: int | None = None) -> int:
@@ -769,10 +769,10 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         kmh = d.playerSpeedKmh if self._player(index) else d.carSpeedKmh[self._i(index)]
         return rmnan(kmh) / 3.6
 
-    def downforce_front(self, index: int | None = None) -> float:
+    def downforce_front(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
-    def downforce_rear(self, index: int | None = None) -> float:
+    def downforce_rear(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
     def damage_severity(self, index: int | None = None) -> tuple[int, int, int, int, int, int, int, int]:
@@ -798,7 +798,7 @@ class Vehicle(_reader.Vehicle, DataAdapter):
             return 1.0
         return max(1.0 - max(self._d().playerDamage), 0.0)
 
-    def is_detached(self, index: int | None = None) -> bool:
+    def is_detached(self, index: int | None = None) -> bool: # TODO: implement
         return False
 
     def impact_time(self, index: int | None = None) -> float:
@@ -806,13 +806,13 @@ class Vehicle(_reader.Vehicle, DataAdapter):
             return 0.0
         return max(rmnan(self._d().playerLastImpactMs) / 1000.0, 0.0)
 
-    def impact_magnitude(self, index: int | None = None) -> float:
+    def impact_magnitude(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
-    def impact_position(self, index: int | None = None) -> tuple[float, float]:
+    def impact_position(self, index: int | None = None) -> tuple[float, float]: # TODO: implement
         return (0.0, 0.0)
 
-    def setup(self) -> tuple[str, ...]:
+    def setup(self) -> tuple[str, ...]: # TODO: implement
         return tuple()
 
 #MARK: Wheel
@@ -866,7 +866,7 @@ class Wheel(_reader.Wheel, DataAdapter):
         d = self._d().suspensionTravel
         return (d[0] * 1000, d[1] * 1000, d[2] * 1000, d[3] * 1000)
 
-    def third_spring_deflection(self, index: int | None = None) -> tuple[float, ...]:
+    def third_spring_deflection(self, index: int | None = None) -> tuple[float, ...]: # TODO: implement
         return (0.0, 0.0)
 
     def suspension_deflection(self, index: int | None = None) -> tuple[float, ...]:
@@ -877,7 +877,7 @@ class Wheel(_reader.Wheel, DataAdapter):
             return self._zero4()
         return tuple(rmnan(x) for x in self._d().wheelLoad)
 
-    def suspension_damage(self, index: int | None = None) -> tuple[float, ...]:
+    def suspension_damage(self, index: int | None = None) -> tuple[float, ...]: # TODO: implement
         return self._zero4()
 
     def position_vertical(self, index: int | None = None) -> tuple[float, ...]:
@@ -886,7 +886,7 @@ class Wheel(_reader.Wheel, DataAdapter):
         pts = self._d().tyreContactPoint
         return (pts[0].y * 1000, pts[1].y * 1000, pts[2].y * 1000, pts[3].y * 1000)
 
-    def is_detached(self, index: int | None = None) -> tuple[bool, ...]:
+    def is_detached(self, index: int | None = None) -> tuple[bool, ...]: # TODO: implement
         return (False, False, False, False)
 
     def offroad(self, index: int | None = None) -> int:
