@@ -429,10 +429,10 @@ class Switch(_reader.Switch, DataAdapter):
         return int(self._d().playerSpeedLimiterInAction) if self._player(index) else 0
 
     def tc_active(self, index: int | None = None) -> bool:
-        return False
+        return bool(self._d().playerTCInAction) if self._player(index) else False
 
     def abs_active(self, index: int | None = None) -> bool:
-        return False
+        return bool(self._d().playerABSInAction) if self._player(index) else False
 
     def drs_status(self, index: int | None = None) -> int:
         if not self._player(index):
