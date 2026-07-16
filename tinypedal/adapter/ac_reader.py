@@ -268,7 +268,16 @@ class Lap(_reader.Lap, DataAdapter):
     def behind_leader(self, index: int | None = None) -> int:
         return max(self._d().leaderCompletedLaps - self.completed_laps(index), 0)
 
-    def behind_next(self, index: int | None = None) -> int: # TODO: implement
+    def behind_next(self, index: int | None = None) -> int:
+        d = self._d()
+        my_i = self._i(index)
+        my_place = int(d.carRacePosition[my_i])
+        if my_place <= 1:
+            return 0
+        ahead_place = my_place - 1
+        for i in range(int(d.carsCount)):
+            if int(d.carRacePosition[i]) == ahead_place:
+                return max(int(d.carLapCount[i]) - int(d.carLapCount[my_i]), 0)
         return 0
 
     def safety_car_distance(self) -> float: # TODO: implement
