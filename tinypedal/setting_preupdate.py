@@ -369,6 +369,7 @@ def _user_prior_2_36_0(dict_user: dict):
     # Copy old telemetry_api setting
     telemetry_api = dict_user.get("telemetry_api")
     if isinstance(telemetry_api, dict):
+        dict_user["api_ac"] = telemetry_api.copy()
         dict_user["api_lmu"] = telemetry_api.copy()
         dict_user["api_rf2"] = telemetry_api.copy()
     # Correct default update interval in module_vehicles

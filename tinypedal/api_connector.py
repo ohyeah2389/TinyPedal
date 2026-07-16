@@ -26,6 +26,8 @@ from functools import partial
 # Import APIs
 from .adapter import (
     APIDataReader,
+    ac_connector,
+    ac_reader,
     lmu_connector,
     lmu_reader,
     lmu_restapi,
@@ -34,7 +36,7 @@ from .adapter import (
     rf2_reader,
     rf2_restapi,
 )
-from .const_api import API_LMU_NAME, API_LMULEGACY_NAME, API_RF2_NAME
+from .const_api import API_AC_NAME, API_LMU_NAME, API_LMULEGACY_NAME, API_RF2_NAME
 from .validator import bytes_to_str
 
 
@@ -116,6 +118,47 @@ class SimLMU(Connector):
         self._shmmapi.setPlayerIndex(config["player_index"])
         self._restapi.setConnection(config.copy())
         lmu_reader.tostr = partial(bytes_to_str, char_encoding=config["character_encoding"].lower())
+
+
+class SimAC(Connector):
+    """AC/CSP Shared Memory API"""
+
+    __slots__ = ("_shmmapi",)
+    NAME = API_AC_NAME
+
+    def __init__(self):
+        self._shmmapi = ac_connector.ACInfo()
+
+    def start(self):
+        self._shmmapi.start()
+
+    def stop(self):
+        self._shmmapi.stop()
+
+    def reader(self) -> APIDataReader:
+        shmm = self._shmmapi
+        return APIDataReader(
+            ac_reader.State(shmm),
+            ac_reader.Brake(shmm),
+            ac_reader.ElectricMotor(shmm),
+            ac_reader.Engine(shmm),
+            ac_reader.Inputs(shmm),
+            ac_reader.Lap(shmm),
+            ac_reader.Session(shmm),
+            ac_reader.Switch(shmm),
+            ac_reader.Timing(shmm),
+            ac_reader.Tyre(shmm),
+            ac_reader.Vehicle(shmm),
+            ac_reader.Wheel(shmm),
+        )
+
+    def setup(self, config: dict):
+        self._shmmapi.setMode(config["access_mode"])
+        self._shmmapi.setStateOverride(config["enable_active_state_override"])
+        self._shmmapi.setActiveState(config["active_state"])
+        self._shmmapi.setPlayerOverride(config["enable_player_index_override"])
+        self._shmmapi.setPlayerIndex(config["player_index"])
+        ac_reader.tostr = partial(bytes_to_str, char_encoding=config["character_encoding"].lower())
 
 
 class SimRF2(Connector):

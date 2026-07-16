@@ -20,9 +20,17 @@
 Default API setting template
 """
 
-from ..const_api import API_LMU_CONFIG, API_RF2_CONFIG
+from ..const_api import API_AC_CONFIG, API_LMU_CONFIG, API_RF2_CONFIG
 
 API_DEFAULT = {
+    API_AC_CONFIG: {
+        "access_mode": 0,
+        "character_encoding": "UTF-8",
+        "enable_active_state_override": False,
+        "active_state": True,
+        "enable_player_index_override": False,
+        "player_index": -1,
+    },
     API_LMU_CONFIG: {
         "access_mode": 0,
         "character_encoding": "UTF-8",

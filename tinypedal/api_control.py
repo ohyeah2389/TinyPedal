@@ -35,12 +35,14 @@ def _set_available_api():
     enable_legacy = cfg.telemetry["enable_legacy_api_selection"]
     if PLATFORM.WINDOWS:
         available_api = (
+            (api_connector.SimAC, False),
             (api_connector.SimLMU, False),  # API, is legacy
             (api_connector.SimLMULegacy, not enable_legacy),
             (api_connector.SimRF2, False),
         )
     else:
         available_api = (
+            (api_connector.SimAC, False),
             (api_connector.SimLMU, False),  # API, is legacy
             (api_connector.SimLMULegacy, not enable_legacy),
             (api_connector.SimRF2, False),
