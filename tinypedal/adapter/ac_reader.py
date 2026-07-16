@@ -43,7 +43,7 @@ class DataAdapter:
     def _zero4() -> tuple[float, float, float, float]:
         return (0.0, 0.0, 0.0, 0.0)
 
-
+#MARK: State
 class State(_reader.State, DataAdapter):
     __slots__ = ()
 
@@ -63,7 +63,7 @@ class State(_reader.State, DataAdapter):
         data = self._d()
         return f"{data.versionMajor}.{data.versionMinor}"
 
-
+#MARK: Brake
 class Brake(_reader.Brake, DataAdapter):
     __slots__ = ()
 
@@ -87,7 +87,7 @@ class Brake(_reader.Brake, DataAdapter):
     def wear(self, index: int | None = None) -> tuple[float, ...]:
         return self._zero4()
 
-
+#MARK: ElectricMotor
 class ElectricMotor(_reader.ElectricMotor, DataAdapter):
     __slots__ = ()
 
@@ -117,7 +117,7 @@ class ElectricMotor(_reader.ElectricMotor, DataAdapter):
     def regeneration_level(self, index: int | None = None) -> float:
         return rmnan(self._d().playerMgukRecovery if self._player(index) else 0.0)
 
-
+#MARK: Engine
 class Engine(_reader.Engine, DataAdapter):
     __slots__ = ()
 
@@ -174,7 +174,7 @@ class Engine(_reader.Engine, DataAdapter):
     def max_virtual_energy(self) -> float:
         return 0.0
 
-
+#MARK: Inputs
 class Inputs(_reader.Inputs, DataAdapter):
     __slots__ = ()
 
@@ -217,7 +217,7 @@ class Inputs(_reader.Inputs, DataAdapter):
     def force_feedback(self) -> float:
         return rmnan(self._d().playerFfbFinal)
 
-
+#MARK: Lap
 class Lap(_reader.Lap, DataAdapter):
     __slots__ = ()
 
@@ -275,7 +275,7 @@ class Lap(_reader.Lap, DataAdapter):
     def safety_car_active(self) -> bool:
         return False
 
-
+#MARK: Session
 class Session(_reader.Session, DataAdapter):
     __slots__ = ()
 
@@ -381,7 +381,7 @@ class Session(_reader.Session, DataAdapter):
     def cut_points(self, index: int | None = None) -> float:
         return 0.0
 
-
+#MARK: Switch
 class Switch(_reader.Switch, DataAdapter):
     __slots__ = ()
 
@@ -440,7 +440,7 @@ class Switch(_reader.Switch, DataAdapter):
     def auto_clutch(self) -> bool:
         return False
 
-
+#MARK: Timing
 class Timing(_reader.Timing, DataAdapter):
     __slots__ = ()
 
@@ -536,7 +536,7 @@ class Timing(_reader.Timing, DataAdapter):
         ms = d.playerGapBehindNextMs if self._player(index) else d.carGapBehindNextMs[self._i(index)]
         return max(rmnan(ms) / 1000.0, 0.0)
 
-
+#MARK: Tyre
 class Tyre(_reader.Tyre, DataAdapter):
     __slots__ = ()
 
@@ -626,7 +626,7 @@ class Tyre(_reader.Tyre, DataAdapter):
             return self._zero4()
         return tuple(rmnan(x) * 1000 for x in self._d().suspensionTravel)
 
-
+#MARK: Vehicle
 class Vehicle(_reader.Vehicle, DataAdapter):
     __slots__ = ()
 
@@ -808,7 +808,7 @@ class Vehicle(_reader.Vehicle, DataAdapter):
     def setup(self) -> tuple[str, ...]:
         return tuple()
 
-
+#MARK: Wheel
 class Wheel(_reader.Wheel, DataAdapter):
     __slots__ = ()
 
