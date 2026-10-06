@@ -31,3 +31,5 @@ pylintrc
 *.zip
 *.log
 *.db
+/.virtualenvs
+*.code-workspace
