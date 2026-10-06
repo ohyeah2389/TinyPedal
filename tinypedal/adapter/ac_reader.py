@@ -5,15 +5,18 @@ AC API data reader
 from __future__ import annotations
 
 from math import radians
+from typing import TYPE_CHECKING
 
-from ..calculation import lap_progress_distance, mean, vel2speed
-from ..const_common import STINT_USAGE_DEFAULT
+from ..calculation import distance, mean
 from ..formatter import strip_invalid_char
-from ..process.weather import WeatherNode
-from ..validator import bytes_to_str as tostr
 from ..validator import infnan_to_zero as rmnan
+from ..validator import string_converter
 from . import _reader
-from .ac_connector import ACInfo
+
+if TYPE_CHECKING:
+    from .ac_connector import ACInfo
+
+tostr = string_converter()
 
 G_ACCEL = 9.80665
 
@@ -53,6 +56,9 @@ class State(_reader.State, DataAdapter):
     def paused(self) -> bool:
         return self.shmm.isPaused
 
+    def resets(self) -> int:
+        return 0
+
     def desynced(self, index: int | None = None) -> bool:
         data = self._d()
         i = self._i(index)
@@ -66,6 +72,9 @@ class State(_reader.State, DataAdapter):
 #MARK: Brake
 class Brake(_reader.Brake, DataAdapter):
     __slots__ = ()
+
+    def compound_name(self, index: int | None = None) -> tuple[str, str]:
+        return ("", "")
 
     def bias_front(self, index: int | None = None) -> float:
         if not self._player(index):
@@ -154,6 +163,9 @@ class Engine(_reader.Engine, DataAdapter):
     def water_temperature(self, index: int | None = None) -> float:
         return rmnan(self._d().playerWaterTemp if self._player(index) else 0.0)
 
+    def exhaust_temperature(self, index: int | None = None) -> float:
+        return 0.0
+
     def lift_and_coast_progress(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
 
@@ -174,6 +186,9 @@ class Engine(_reader.Engine, DataAdapter):
         return 0.0
 
     def max_virtual_energy(self) -> float: # TODO: implement
+        return 0.0
+
+    def absolute_refill(self) -> float: # TODO: implement
         return 0.0
 
 #MARK: Inputs
@@ -207,14 +222,14 @@ class Inputs(_reader.Inputs, DataAdapter):
     def steering_shaft_torque(self, index: int | None = None) -> float:
         return rmnan(self._d().playerSteerTorque if self._player(index) else 0.0)
 
-    def steering_range_physical(self, index: int | None = None) -> float:
+    def steering_range(self, index: int | None = None) -> float:
         if not self._player(index):
             return 540.0
         lock = rmnan(self._d().playerSteerLock)
         return max(lock * 2.0, 90.0)
 
     def steering_range_visual(self, index: int | None = None) -> float:
-        return self.steering_range_physical(index)
+        return self.steering_range(index)
 
     def force_feedback(self) -> float:
         return rmnan(self._d().playerFfbFinal)
@@ -233,9 +248,9 @@ class Lap(_reader.Lap, DataAdapter):
         return value
 
     def number(self, index: int | None = None) -> int:
-        return self.completed_laps(index) + 1
+        return self.completed(index) + 1
 
-    def completed_laps(self, index: int | None = None) -> int:
+    def completed(self, index: int | None = None) -> int:
         d = self._d()
         return int(d.playerLapCount if self._player(index) else d.carLapCount[self._i(index)])
 
@@ -258,7 +273,7 @@ class Lap(_reader.Lap, DataAdapter):
         max_laps = self.maximum()
         if max_laps <= 0:
             return 0.0
-        return max(max_laps - self.completed_laps(index) - self.progress(index), 0.0)
+        return max(max_laps - self.completed(index) - self.progress(index), 0.0)
 
     def sector_index(self, index: int | None = None) -> int:
         d = self._d()
@@ -266,7 +281,7 @@ class Lap(_reader.Lap, DataAdapter):
         return min(max(sec, 0), 2)
 
     def behind_leader(self, index: int | None = None) -> int:
-        return max(self._d().leaderCompletedLaps - self.completed_laps(index), 0)
+        return max(self._d().leaderCompletedLaps - self.completed(index), 0)
 
     def behind_next(self, index: int | None = None) -> int:
         d = self._d()
@@ -367,12 +382,11 @@ class Session(_reader.Session, DataAdapter):
     def wetness_average(self) -> float:
         return mean((self.wetness_minimum(), self.wetness_maximum()))
 
-    def wetness(self) -> tuple[float, float, float]:
-        avg = self.wetness_average()
-        return (self.wetness_minimum(), self.wetness_maximum(), avg)
+    def wetness(self) -> float:
+        return rmnan(self._d().rainWetness)
 
-    def weather_forecast(self) -> tuple[WeatherNode, ...]: # TODO: implement
-        return tuple()
+    def weather_forecast(self) -> tuple[tuple[float, int, float, float], ...]: # TODO: implement
+        return ()
 
     def cloud_coverage(self) -> int:
         return min(max(int(self._d().weatherType), 0), 10)
@@ -380,7 +394,7 @@ class Session(_reader.Session, DataAdapter):
     def grip_level(self) -> float:
         return rmnan(self._d().roadGrip)
 
-    def track_time(self) -> float:
+    def track_time(self, scale: int = 1) -> float:
         return rmnan(self._d().trackTimeSec)
 
     def time_scale(self) -> int:
@@ -391,6 +405,13 @@ class Session(_reader.Session, DataAdapter):
 
     def cut_points(self, index: int | None = None) -> float: # TODO: implement
         return 0.0
+
+    def wind_direction(self) -> float:
+        direction = rmnan(self._d().windDirectionDeg)
+        return direction - direction // 360 * 360
+
+    def wind_speed(self) -> float:
+        return rmnan(self._d().windSpeedKmh) / 3.6
 
 #MARK: Switch
 class Switch(_reader.Switch, DataAdapter):
@@ -431,8 +452,12 @@ class Switch(_reader.Switch, DataAdapter):
     def headlights(self, index: int | None = None) -> int:
         return int(self._d().playerHeadlightsActive) if self._player(index) else 0
 
-    def ignition_starter(self, index: int | None = None) -> int:
-        return 1 if self.shmm.isActive else 0
+    def ignition(self, index: int | None = None, stall_rpm: float = 100) -> int:
+        if not self._player(index) or not self.shmm.isActive:
+            return 0
+        if rmnan(self._d().playerRpm) > stall_rpm:
+            return 2
+        return 1
 
     def speed_limiter(self, index: int | None = None) -> int:
         return int(self._d().playerSpeedLimiterInAction) if self._player(index) else 0
@@ -464,6 +489,9 @@ class Timing(_reader.Timing, DataAdapter):
         d = self._d()
         ms = d.playerLapStartMs if self._player(index) else d.carLapStartMs[self._i(index)]
         return max(rmnan(ms) / 1000.0, 0.0)
+
+    def is_last_valid(self, index: int | None = None) -> bool:
+        return self.last_laptime(index) > 0
 
     def elapsed(self, index: int | None = None) -> float:
         d = self._d()
@@ -539,6 +567,23 @@ class Timing(_reader.Timing, DataAdapter):
         d = self._d()
         ms = d.playerBestSector2Ms if self._player(index) else d.carBestSector2Ms[self._i(index)]
         return max(rmnan(ms) / 1000.0, 0.0)
+
+    def last_sector(self, index: int | None = None) -> float:
+        d = self._d()
+        sector_idx = d.playerCurrentSector if self._player(index) else d.carCurrentSector[self._i(index)]
+        if sector_idx == 1:
+            return self.current_sector1(index)
+        if sector_idx == 2:
+            sector1 = self.current_sector1(index)
+            sector2 = self.current_sector2(index)
+            if sector2 > sector1 > 0:
+                return sector2 - sector1
+            return 0.0
+        last_lap = abs(self.last_laptime(index))
+        last_sector2 = self.last_sector2(index)
+        if last_lap > last_sector2 > 0:
+            return last_lap - last_sector2
+        return 0.0
 
     def behind_leader(self, index: int | None = None) -> float:
         d = self._d()
@@ -632,6 +677,9 @@ class Tyre(_reader.Tyre, DataAdapter):
             return self._zero4()
         return tuple(max(1.0 - rmnan(x), 0.0) for x in self._d().tyreWear)
 
+    def puncture(self, index: int | None = None, threshold: float = 0.01) -> tuple[bool, ...]:
+        return tuple(pressure <= threshold for pressure in self.pressure(index))
+
     def carcass_temperature(self, index: int | None = None) -> tuple[float, ...]:
         return self.inner_temperature_avg(index)
 
@@ -639,6 +687,11 @@ class Tyre(_reader.Tyre, DataAdapter):
         if not self._player(index):
             return self._zero4()
         return tuple(rmnan(x) * 1000 for x in self._d().suspensionTravel)
+
+    def slip_angle(self, index: int | None = None) -> tuple[float, ...]:
+        if not self._player(index):
+            return self._zero4()
+        return tuple(rmnan(x) for x in self._d().wheelSlipAngleRad)
 
 #MARK: Vehicle
 class Vehicle(_reader.Vehicle, DataAdapter):
@@ -658,6 +711,9 @@ class Vehicle(_reader.Vehicle, DataAdapter):
 
     def slot_id(self, index: int | None = None) -> int:
         return int(self._d().carSessionID[self._i(index)])
+
+    def team_name(self, index: int | None = None) -> str:
+        return ""
 
     def driver_name(self, index: int | None = None) -> str:
         if self._player(index):
@@ -712,16 +768,13 @@ class Vehicle(_reader.Vehicle, DataAdapter):
     def pit_stop_time(self) -> float: # TODO: implement
         return 0.0
 
-    def absolute_refill(self) -> float: # TODO: implement
+    def repair_time(self) -> float:
         return 0.0
-
-    def stint_usage(self, driver_name: str) -> tuple[float, float, float, float, int]: # TODO: implement
-        return STINT_USAGE_DEFAULT
 
     def finish_state(self, index: int | None = None) -> int:
         return 1 if self._d().sessionIsOver else 0
 
-    def orientation_yaw_radians(self, index: int | None = None) -> float:
+    def orientation_yaw(self, index: int | None = None) -> float:
         d = self._d()
         deg = d.playerYawAngleDeg if self._player(index) else d.carYawAngleDeg[self._i(index)]
         return radians(rmnan(deg))
@@ -743,17 +796,17 @@ class Vehicle(_reader.Vehicle, DataAdapter):
     def position_vertical(self, index: int | None = None) -> float:
         return self.position_xyz(index)[1]
 
-    def accel_lateral(self, index: int | None = None) -> float:
+    def acceleration_lateral(self, index: int | None = None) -> float:
         if not self._player(index):
             return 0.0
         return rmnan(self._d().playerAcceleration.x) * G_ACCEL
 
-    def accel_longitudinal(self, index: int | None = None) -> float:
+    def acceleration_longitudinal(self, index: int | None = None) -> float:
         if not self._player(index):
             return 0.0
         return -rmnan(self._d().playerAcceleration.z) * G_ACCEL
 
-    def accel_vertical(self, index: int | None = None) -> float:
+    def acceleration_vertical(self, index: int | None = None) -> float:
         if not self._player(index):
             return 0.0
         return rmnan(self._d().playerAcceleration.y) * G_ACCEL
@@ -827,6 +880,27 @@ class Vehicle(_reader.Vehicle, DataAdapter):
 #MARK: Wheel
 class Wheel(_reader.Wheel, DataAdapter):
     __slots__ = ()
+
+    def _contact(self, corner: int):
+        point = self._d().tyreContactPoint[corner]
+        return (point.x, point.y, point.z)
+
+    def track_front(self, index: int | None = None) -> float:
+        if not self._player(index):
+            return 0.0
+        return rmnan(distance(self._contact(0), self._contact(1)) * 1000)
+
+    def track_rear(self, index: int | None = None) -> float:
+        if not self._player(index):
+            return 0.0
+        return rmnan(distance(self._contact(2), self._contact(3)) * 1000)
+
+    def wheelbase(self, index: int | None = None) -> float:
+        if not self._player(index):
+            return 0.0
+        left = distance(self._contact(0), self._contact(2))
+        right = distance(self._contact(1), self._contact(3))
+        return rmnan((left + right) * 500)
 
     def camber(self, index: int | None = None) -> tuple[float, ...]:
         if not self._player(index):

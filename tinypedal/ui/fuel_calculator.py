@@ -51,9 +51,9 @@ from PySide2.QtWidgets import (
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_file import ConfigType, FileFilter
+from ..constant import CONFIG, FILE
 from ..formatter import laptime_string_to_seconds
-from ..module_info import ConsumptionDataSet, minfo
+from ..module_info import ConsumptionData, minfo
 from ..setting import cfg
 from ..userfile.consumption_history import load_consumption_history_file
 from ._common import BaseDialog, UIScaler
@@ -150,7 +150,7 @@ class FuelCalculator(BaseDialog):
         filename_full = QFileDialog.getOpenFileName(
             self,
             dir=cfg.path.fuel_delta,
-            filter=";;".join((FileFilter.CONSUMPTION, FileFilter.CSV))
+            filter=";;".join((FILE.FILTER_CONSUMPTION, FILE.FILTER_CSV))
         )[0]
         if not filename_full:
             return
@@ -196,7 +196,7 @@ class FuelCalculator(BaseDialog):
         config = cfg.user.config["fuel_calculator"]
         if checked != config["show_consumption_history"]:
             config["show_consumption_history"] = checked
-            cfg.save(config_type=ConfigType.CONFIG)
+            cfg.save(config_type=CONFIG.TYPE_CONFIG)
 
     def table_header_menu(self, position: QPoint):
         """Open table header context menu"""
@@ -222,7 +222,7 @@ class FuelCalculator(BaseDialog):
                 config[option_name] = not config[option_name]
                 self.panel_history.toggle_column()
                 self.toggle_history_panel(config["show_consumption_history"])
-                cfg.save(config_type=ConfigType.CONFIG)
+                cfg.save(config_type=CONFIG.TYPE_CONFIG)
                 break
 
 
@@ -359,7 +359,7 @@ class HistoryPanel(QWidget):
 
         self.table_history.setFixedWidth(UIScaler.size(3 + 5.1 * (base_column_count - hidden_column_count)))
 
-    def refresh(self, dataset: deque[ConsumptionDataSet]):
+    def refresh(self, dataset: deque[ConsumptionData]):
         """Refresh history data table"""
         self.table_history.setRowCount(0)
         invalid_color = QColor("#F40")
@@ -444,7 +444,7 @@ class CalculatorPanel(QWidget):
         layout_panel.addLayout(layout_calculator)
         self.setLayout(layout_panel)
 
-    def fill_in_data(self, dataset: deque[ConsumptionDataSet]):
+    def fill_in_data(self, dataset: deque[ConsumptionData]):
         """Fill in history data to edit"""
         latest_history = dataset[0]
         # Load laptime from last valid lap

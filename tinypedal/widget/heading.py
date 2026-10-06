@@ -25,7 +25,8 @@ from PySide2.QtGui import QBrush, QPainter, QPen, QPixmap
 
 from .. import calculation as calc
 from ..api_control import api
-from ..const_file import ImageFile
+from ..constant import FILE
+from ..module_info import minfo
 from ._base import Overlay
 
 
@@ -81,7 +82,7 @@ class Realtime(Overlay):
         self.resize(self.area_size, self.area_size)
         self.pixmap_background = QPixmap(self.area_size, self.area_size)
         self.pixmap_dot = QPixmap(self.dot_size * 2, self.dot_size * 2)
-        self.pixmap_icon = QPixmap(ImageFile.COMPASS).scaledToWidth(
+        self.pixmap_icon = QPixmap(FILE.IMAGE_COMPASS).scaledToWidth(
             int(self.area_size * 1.5),
             mode=Qt.SmoothTransformation
         )
@@ -116,15 +117,17 @@ class Realtime(Overlay):
         """Update when vehicle on track"""
         # Read speed, position data
         speed = api.read.vehicle.speed()
-        pos_curr = (api.read.vehicle.position_longitudinal(),
-                    api.read.vehicle.position_lateral())
+        pos_curr = (
+            api.read.vehicle.position_longitudinal(),
+            api.read.vehicle.position_lateral(),
+        )
 
         # Vehicle orientation yaw
-        temp_veh_ori_yaw = calc.rad2deg(api.read.vehicle.orientation_yaw_radians()) + 180
+        temp_veh_ori_yaw = calc.degrees(api.read.vehicle.orientation_yaw()) + 180
 
         # Direction of travel yaw angle
         if self.last_pos != pos_curr and speed > 1:
-            self.yaw_angle = temp_veh_ori_yaw - calc.rad2deg(calc.oriyaw2rad(
+            self.yaw_angle = temp_veh_ori_yaw - calc.degrees(calc.oriyaw(
                 pos_curr[0] - self.last_pos[0], pos_curr[1] - self.last_pos[1])) + 180
             self.last_pos = pos_curr
         elif speed <= 1:
@@ -133,8 +136,7 @@ class Realtime(Overlay):
 
         # Slip angle
         if speed > 1:
-            self.slip_angle = calc.rad2deg(
-                (api.read.wheel.slip_angle_fl() + api.read.wheel.slip_angle_fr()) * 0.5)
+            self.slip_angle = minfo.wheels.averageFrontSlipAngle
         else:
             self.slip_angle = 0
 

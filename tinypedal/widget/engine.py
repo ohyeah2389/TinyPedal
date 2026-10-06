@@ -48,51 +48,14 @@ class Realtime(Overlay):
         # Config variable
         bar_padx = self.set_padding(self.wcfg["font_size"], self.wcfg["bar_padding"])
         bar_width = font_m.width * 8 + bar_padx
+        self.drive_wheel_allocation = self.wcfg["drive_wheel_allocation"]
 
         # Config units
-        self.unit_temp = units.set_unit_temperature(self.cfg.units["temperature_unit"])
         self.unit_power = units.set_unit_power(self.cfg.units["power_unit"])
         self.symbol_power = units.set_symbol_power(self.cfg.units["power_unit"])
         self.unit_pres = units.set_unit_pressure(self.cfg.units["turbo_pressure_unit"])
         self.symbol_pres = units.set_symbol_pressure(self.cfg.units["turbo_pressure_unit"])
-
-        # Oil temperature
-        if self.wcfg["show_oil_temperature"]:
-            self.bar_style_oil = (
-                self.wcfg["background_color_oil"],
-                self.wcfg["warning_color_overheat"],
-            )
-            self.bar_oil = self.set_rawtext(
-                text="Oil T",
-                width=bar_width,
-                fixed_height=font_m.height,
-                offset_y=font_m.voffset,
-                fg_color=self.wcfg["font_color_oil"],
-                bg_color=self.bar_style_oil[0],
-            )
-            self.set_primary_orient(
-                target=self.bar_oil,
-                column=self.wcfg["display_order_oil"],
-            )
-
-        # Water temperature
-        if self.wcfg["show_water_temperature"]:
-            self.bar_style_water = (
-                self.wcfg["background_color_water"],
-                self.wcfg["warning_color_overheat"],
-            )
-            self.bar_water = self.set_rawtext(
-                text="Water T",
-                width=bar_width,
-                fixed_height=font_m.height,
-                offset_y=font_m.voffset,
-                fg_color=self.wcfg["font_color_water"],
-                bg_color=self.bar_style_water[0],
-            )
-            self.set_primary_orient(
-                target=self.bar_water,
-                column=self.wcfg["display_order_water"],
-            )
+        self.unit_weight = units.set_unit_weight(self.cfg.units["weight_unit"])
 
         # Turbo pressure
         if self.wcfg["show_turbo_pressure"]:
@@ -169,30 +132,56 @@ class Realtime(Overlay):
                 column=self.wcfg["display_order_power"],
             )
 
+        # Power to weight ratio
+        if self.wcfg["show_power_to_weight_ratio"]:
+            self.bar_pwratio = self.set_rawtext(
+                text="PW RATIO",
+                width=bar_width,
+                fixed_height=font_m.height,
+                offset_y=font_m.voffset,
+                fg_color=self.wcfg["font_color_power_to_weight_ratio"],
+                bg_color=self.wcfg["background_color_power_to_weight_ratio"],
+            )
+            self.set_primary_orient(
+                target=self.bar_pwratio,
+                column=self.wcfg["display_order_power_to_weight_ratio"],
+            )
+
+        # Drive ratio
+        if self.wcfg["show_drive_ratio"]:
+            self.bar_dwratio = self.set_rawtext(
+                text="DW RATIO",
+                width=bar_width,
+                fixed_height=font_m.height,
+                offset_y=font_m.voffset,
+                fg_color=self.wcfg["font_color_drive_ratio"],
+                bg_color=self.wcfg["background_color_drive_ratio"],
+            )
+            self.set_primary_orient(
+                target=self.bar_dwratio,
+                column=self.wcfg["display_order_drive_ratio"],
+            )
+
+        # Last data
+        self.post_update()
+
+    def post_update(self):
+        self.ema_power = 0
+        self.max_power_kw = 0
+
     def timerEvent(self, event):
         """Update when vehicle on track"""
         rpm = api.read.engine.rpm()
         torque = api.read.engine.torque()
-        if torque == 0:
+        if torque:
+            power_kw = calc.engine_power(torque, rpm)
+        else:
+            power_kw = 0.0
             # Calculate power & torque based on energy consumption if torque n/a
             max_ve = api.read.engine.max_virtual_energy()
             if max_ve > 0:
                 power_kw = minfo.energy.rateOfConsumption * max_ve / 100_000
                 torque = calc.engine_torque(power_kw, rpm)
-            else:
-                power_kw = 0
-        else:
-            power_kw = calc.engine_power(torque, rpm)
-
-        # Oil temperature
-        if self.wcfg["show_oil_temperature"]:
-            temp_oil = round(api.read.engine.oil_temperature(), 2)
-            self.update_oil(self.bar_oil, temp_oil)
-
-        # Water temperature
-        if self.wcfg["show_water_temperature"]:
-            temp_water = round(api.read.engine.water_temperature(), 2)
-            self.update_water(self.bar_water, temp_water)
 
         # Turbo pressure
         if self.wcfg["show_turbo_pressure"]:
@@ -216,57 +205,88 @@ class Realtime(Overlay):
         if self.wcfg["show_power"]:
             self.update_power(self.bar_power, power_kw)
 
+        # Power to weight ratio
+        if self.wcfg["show_power_to_weight_ratio"]:
+            total_static_weight = minfo.wheels.totalStaticWeight
+            self.ema_power += 0.2 * (power_kw - self.ema_power)
+            if self.max_power_kw < self.ema_power:
+                self.max_power_kw = self.ema_power
+            self.update_power_ratio(self.bar_pwratio, self.max_power_kw, total_static_weight)
+
+        # Drive ratio
+        if self.wcfg["show_drive_ratio"]:
+            wheel_speed = api.read.wheel.rotation()
+            if self.drive_wheel_allocation == 0:
+                wheel_speed = abs(wheel_speed[2] + wheel_speed[3]) / 2
+                drive_alloc = "R"
+            elif self.drive_wheel_allocation == 1:
+                wheel_speed = abs(wheel_speed[0] + wheel_speed[1]) / 2
+                drive_alloc = "F"
+            else:
+                wheel_speed = abs(calc.mean(wheel_speed))
+                drive_alloc = "A"
+            if wheel_speed > 1:
+                engine_speed = rpm * 0.104719755  # rad/s
+                drive_ratio = engine_speed / wheel_speed
+            else:
+                drive_ratio = 0.0
+            self.update_drive_ratio(self.bar_dwratio, drive_ratio, drive_alloc)
+
     # GUI update methods
-    def update_oil(self, target, data):
-        """Oil temperature"""
-        if target.last != data:
-            target.last = data
-            target.text = f"O{self.unit_temp(data): >6.1f}°"
-            target.bg = self.bar_style_oil[data >= self.wcfg["overheat_threshold_oil"]]
-            target.update()
-
-    def update_water(self, target, data):
-        """Water temperature"""
-        if target.last != data:
-            target.last = data
-            target.text = f"W{self.unit_temp(data): >6.1f}°"
-            target.bg = self.bar_style_water[data >= self.wcfg["overheat_threshold_water"]]
-            target.update()
-
     def update_turbo(self, target, data):
         """Turbo pressure"""
         if target.last != data:
             target.last = data
-            text = f"{self.unit_pres(data * 0.001):03.3f}"[:5]
-            target.text = f"{text}{self.symbol_pres}"
+            text = f"{self.unit_pres(data * 0.001):03.3f}"
+            target.text = f"{text:.5}{self.symbol_pres}"
             target.update()
 
     def update_rpm(self, target, data):
         """Engine RPM"""
         if target.last != data:
             target.last = data
-            target.text = f"{data: >5}rpm"
+            target.text = f"{data:>5}rpm"
             target.update()
 
     def update_rpm_max(self, target, data):
         """Engine RPM maximum"""
         if target.last != data:
             target.last = data
-            target.text = f"{data: >5}max"
+            target.text = f"{data:>5}max"
             target.update()
 
     def update_torque(self, target, data):
         """Engine torque"""
         if target.last != data:
             target.last = data
-            text = f"{data: >6.2f}"[:6]
-            target.text = f"{text}Nm"
+            text = f"{data:>6.2f}"
+            target.text = f"{text:.6}Nm"
             target.update()
 
     def update_power(self, target, data):
         """Engine power"""
         if target.last != data:
             target.last = data
-            text = f"{self.unit_power(data): >6.2f}"[:6]
-            target.text = f"{text}{self.symbol_power}"
+            text = f"{self.unit_power(data):>6.2f}"
+            target.text = f"{text:.6}{self.symbol_power}"
+            target.update()
+
+    def update_power_ratio(self, target, *data):
+        """Power to weight ratio"""
+        if target.last != data:
+            target.last = data
+            if data[1] > 0:
+                ratio = self.unit_power(data[0]) / self.unit_weight(data[1])
+            else:
+                ratio = 0.0
+            text = f"{ratio:.3f}"
+            target.text = f"{text:.5}p/w"
+            target.update()
+
+    def update_drive_ratio(self, target, data, drive_alloc):
+        """Drive ratio"""
+        if target.last != data:
+            target.last = data
+            text = f"{data:.3f}"
+            target.text = f"{text:.5}:1{drive_alloc}"
             target.update()

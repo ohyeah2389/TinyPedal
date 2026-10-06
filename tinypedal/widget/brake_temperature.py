@@ -20,12 +20,10 @@
 Brake temperature Widget
 """
 
-from functools import partial
-
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import TEXT_NA, TEXT_PLACEHOLDER
+from ..constant import DATA
 from ..userfile.heatmap import (
     HEATMAP_DEFAULT_BRAKE,
     load_heatmap_color,
@@ -55,7 +53,6 @@ class Realtime(Overlay):
 
         # Config variable
         bar_padx = self.set_padding(self.wcfg["font_size"], self.wcfg["bar_padding"])
-        inner_gap = self.wcfg["inner_gap"]
         self.leading_zero = min(max(self.wcfg["leading_zero"], 1), 3) + 0.0  # no decimal
         self.sign_text = "°" if self.wcfg["show_degree_sign"] else ""
         text_width = 3 + len(self.sign_text) + (self.cfg.units["temperature_unit"] == "Fahrenheit")
@@ -76,9 +73,12 @@ class Realtime(Overlay):
         ]
 
         # Brake temperature
-        layout_btemp = self.set_grid_layout(gap=inner_gap)
+        layout_btemp = self.set_grid_layout(
+            gap_hori=self.wcfg["horizontal_gap"],
+            gap_vert=self.wcfg["vertical_gap"],
+        )
         self.bars_btemp = self.set_rawtext(
-            text=TEXT_NA,
+            text=DATA.TEXT_NA,
             width=font_m.width * text_width + bar_padx,
             fixed_height=font_m.height,
             offset_y=font_m.voffset,
@@ -98,9 +98,12 @@ class Realtime(Overlay):
 
         # Average brake temperature
         if self.wcfg["show_average"]:
-            layout_btavg = self.set_grid_layout(gap=inner_gap)
+            layout_btavg = self.set_grid_layout(
+                gap_hori=self.wcfg["horizontal_gap"],
+                gap_vert=self.wcfg["vertical_gap"],
+            )
             self.bars_btavg = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=font_m.width * text_width + bar_padx,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -119,12 +122,13 @@ class Realtime(Overlay):
             )
             update_interval = max(self.wcfg["update_interval"], 0.01)
             average_samples = int(min(max(self.wcfg["average_sampling_duration"], 1), 600) / (update_interval * 0.001))
-            self.calc_ema_btemp = partial(calc.exp_mov_avg, calc.ema_factor(average_samples))
+            self.calc_ema_btemp = calc.ema_filter(average_samples)
 
         # Last data
         self.last_in_pits = -1
         self.last_vehicle_name = None
-        self.last_lap_etime = 0
+        self.last_compound_name = None
+        self.last_elapsed_time = 0
         self.off_brake_timer = 0
 
     def timerEvent(self, event):
@@ -136,10 +140,14 @@ class Realtime(Overlay):
 
             # Heatmap style
             if self.wcfg["enable_heatmap_auto_matching"]:
-                vehicle_name = api.read.vehicle.vehicle_name()
-                if self.last_vehicle_name != vehicle_name:
+                vehicle_name = api.read.vehicle.vehicle_model()
+                compound_name = api.read.brake.compound_name()
+                if self.last_vehicle_name != vehicle_name or self.last_compound_name != compound_name:
                     self.last_vehicle_name = vehicle_name
-                    self.update_heatmap(api.read.vehicle.class_name(), vehicle_name)
+                    self.last_compound_name = compound_name
+                    class_name = api.read.vehicle.class_name()
+                    compound_front, compound_rear = api.read.brake.compound_name()
+                    self.update_heatmap(class_name, vehicle_name, compound_front, compound_rear)
 
         # Brake temperature
         btemp = api.read.brake.temperature()
@@ -148,18 +156,18 @@ class Realtime(Overlay):
 
         # Brake average temperature
         if self.wcfg["show_average"]:
-            lap_etime = api.read.timing.elapsed()
-            if self.last_lap_etime != lap_etime:
-                self.last_lap_etime = lap_etime
+            elapsed_time = api.read.timing.elapsed()
+            if self.last_elapsed_time != elapsed_time:
+                self.last_elapsed_time = elapsed_time
 
-                if self.off_brake_timer > lap_etime:
-                    self.off_brake_timer = lap_etime
+                if self.off_brake_timer > elapsed_time:
+                    self.off_brake_timer = elapsed_time
 
                 if api.read.inputs.brake_raw() > 0.01:
-                    self.off_brake_timer = lap_etime
+                    self.off_brake_timer = elapsed_time
 
                 # Update if braked in the past 1 second
-                if lap_etime - self.off_brake_timer <= self.off_brake_duration:
+                if elapsed_time - self.off_brake_timer <= self.off_brake_duration:
                     for brake_idx, bar_btavg in enumerate(self.bars_btavg):
                         btavg = self.calc_ema_btemp(bar_btavg.last, btemp[brake_idx])
                         self.update_btavg(bar_btavg, btavg)
@@ -170,7 +178,7 @@ class Realtime(Overlay):
         if target.last != data:
             target.last = data
             if data < -100:
-                target.text = TEXT_PLACEHOLDER
+                target.text = DATA.TEXT_PLACEHOLDER
             else:
                 target.text = f"{self.unit_temp(data):0{self.leading_zero}f}{self.sign_text}"
             target.fg, target.bg = calc.select_grade(self.heatmap_styles[index], data)
@@ -181,20 +189,18 @@ class Realtime(Overlay):
         if target.last != data:
             target.last = data
             if data < -100:
-                target.text = TEXT_PLACEHOLDER
+                target.text = DATA.TEXT_PLACEHOLDER
             else:
                 target.text = f"{self.unit_temp(data):0{self.leading_zero}f}{self.sign_text}"
             target.update()
 
     # Additional methods
-    def update_heatmap(self, class_name: str, vehicle_name: str):
+    def update_heatmap(self, class_name: str, vehicle_name: str, compound_front: str, compound_rear: str):
         """Update heatmap"""
-        heatmap_f = select_brake_heatmap_name(
-            set_predefined_brake_name(class_name, vehicle_name, True)
-        )
-        heatmap_r = select_brake_heatmap_name(
-            set_predefined_brake_name(class_name, vehicle_name, False)
-        )
+        brake_name_front = set_predefined_brake_name(class_name, vehicle_name, compound_front, True)
+        brake_name_rear = set_predefined_brake_name(class_name, vehicle_name, compound_rear, False)
+        heatmap_f = select_brake_heatmap_name(brake_name_front)
+        heatmap_r = select_brake_heatmap_name(brake_name_rear)
         heatmap_style_f = load_heatmap_color(
             heatmap_name=heatmap_f,
             default_name=HEATMAP_DEFAULT_BRAKE,

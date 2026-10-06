@@ -47,6 +47,7 @@ class Realtime(Overlay):
             "speed",
             "wheel_lock",
             "wheel_slip",
+            "slip_angle_difference",
         )
 
         self.margin = max(int(self.wcfg["display_margin"]), 0)
@@ -68,6 +69,8 @@ class Realtime(Overlay):
         max_line_width = int(max(1, *(self.wcfg[f"{plot_name}_line_width"] for plot_name in plot_names)))
         max_samples = 3 + max_line_width  # 3 offset + max line width
         self.samples_offset = max_samples - 2
+        self.max_slip_angle = max(self.wcfg["maximum_slip_angle_difference"], 1) * 2
+        self.max_paused_frames = max(self.wcfg["maximum_paused_frames"], 0)
 
         # Config canvas
         self.resize(self.area_width, self.area_height)
@@ -100,26 +103,28 @@ class Realtime(Overlay):
             self.data_wheel_lock = self.create_data_samples(max_samples)
         if self.wcfg["show_wheel_slip"]:
             self.data_wheel_slip = self.create_data_samples(max_samples)
+        if self.wcfg["show_slip_angle_difference"]:
+            self.data_slip_angle_difference = self.create_data_samples(max_samples)
 
         self.draw_queue = tuple(d[1:] for d in sorted(self.config_display_order(plot_names), reverse=True))
         self.draw_background()
 
         # Last data
-        self.last_lap_etime = -1
-        self.update_plot = 1
+        self.last_elapsed_time = -1
+        self.update_plot = 0
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
         # Use elapsed time to determine whether data paused
         # Add 1 extra update compensation
-        lap_etime = api.read.timing.elapsed()
-        if self.last_lap_etime != lap_etime:
-            self.last_lap_etime = lap_etime
-            self.update_plot = 2
-        elif self.update_plot > 0:
+        elapsed_time = api.read.timing.elapsed()
+        if self.last_elapsed_time != elapsed_time:
+            self.last_elapsed_time = elapsed_time
+            self.update_plot = self.max_paused_frames
+
+        if self.update_plot >= 0:
             self.update_plot -= 1
 
-        if self.update_plot:
             throttle_raw = api.read.inputs.throttle_raw()
             brake_raw = api.read.inputs.brake_raw()
 
@@ -198,6 +203,10 @@ class Realtime(Overlay):
                 if wheel_slip < self.wcfg["wheel_slip_threshold"] or throttle_raw <= 0.02:
                     wheel_slip = -999
                 self.update_sample(self.data_wheel_slip, wheel_slip)
+
+            if self.wcfg["show_slip_angle_difference"]:
+                diff_slip_angle = minfo.wheels.slipAngleDifference / self.max_slip_angle + 0.5
+                self.update_sample(self.data_slip_angle_difference, diff_slip_angle)
 
             # Update after all pedal data set
             self.draw_plot_section()

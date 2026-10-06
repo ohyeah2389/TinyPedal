@@ -28,7 +28,6 @@ from ..setting import Setting
 
 logger = logging.getLogger(__name__)
 # Function
-round4 = partial(round, ndigits=4)
 round6 = partial(round, ndigits=6)
 
 
@@ -36,13 +35,13 @@ class DataModule:
     """Data module base"""
 
     __slots__ = (
-        "module_name",
-        "closed",
-        "cfg",
-        "mcfg",
-        "active_interval",
-        "idle_interval",
         "_event",
+        "active_interval",
+        "cfg",
+        "closed",
+        "idle_interval",
+        "mcfg",
+        "module_name",
     )
 
     def __init__(self, config: Setting, module_name: str):

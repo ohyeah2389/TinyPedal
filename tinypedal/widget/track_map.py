@@ -27,7 +27,7 @@ from .. import calculation as calc
 from ..api_control import api
 from ..formatter import random_color_class
 from ..module_info import minfo
-from ..validator import vehicle_position_interp
+from ..process.vehicle import vehicle_position_interp
 from ._base import Overlay
 
 
@@ -144,12 +144,14 @@ class Realtime(Overlay):
             self.update()
 
     # GUI update methods
-    def update_map(self, data):
+    def update_map(self, modified):
         """Map update"""
-        if self.last_modified != data:
-            self.last_modified = data
-            raw_data = minfo.mapping.coordinates if data != -1 else None
-            map_sector_paths, map_full_path = self.create_map_path(raw_data)
+        if self.last_modified != modified:
+            self.last_modified = modified
+            map_sector_paths, map_full_path = self.create_map_path(
+                minfo.mapping.coordinates,
+                minfo.mapping.sectors,
+            )
             self.draw_map_image(map_sector_paths, map_full_path, self.circular_map)
             if self.wcfg["show_proximity_circle"]:
                 self.update_proximity_rect()
@@ -177,15 +179,14 @@ class Realtime(Overlay):
                 minfo.vehicles.dataSet[minfo.vehicles.playerIndex],
             )
 
-    def create_map_path(self, raw_coords=None):
+    def create_map_path(self, raw_coords, raw_sectors):
         """Create map path"""
         map_sector_paths = []
-        sectors_index = minfo.mapping.sectors
-        if raw_coords and isinstance(sectors_index, tuple):
+        if raw_coords and raw_sectors:
             dist = calc.distance(raw_coords[0], raw_coords[-1])
-            angle = max(int(self.wcfg["display_orientation"]), 0)
+            angle = max(int(self.wcfg["display_orientation"] + minfo.mapping.orientation), 0)
             angle = angle - angle // 360 * 360
-            self.map_orient = calc.deg2rad(angle)
+            self.map_orient = calc.radians(angle)
             (self.map_scaled, self.map_range, self.map_scale, self.map_offset
              ) = calc.scale_map(raw_coords, self.area_size, self.area_margin, angle)
 
@@ -193,11 +194,11 @@ class Realtime(Overlay):
             skip_node = calc.skip_map_nodes(total_nodes, self.temp_map_size * 3, self.display_detail_level)
             last_skip = 0
 
-            sectors_indexes = (0, *sectors_index)
+            sectors_index = (0, *raw_sectors)
             map_sector_path = None
             # Map sector path
             for index, coords in enumerate(self.map_scaled):
-                if index in sectors_indexes:
+                if index in sectors_index:
                     last_skip = 0
                     if map_sector_path:  # close previous sector path
                         map_sector_path.lineTo(*coords)
@@ -216,7 +217,7 @@ class Realtime(Overlay):
             # Map full path
             map_full_path = QPainterPath()
             for index, coords in enumerate(self.map_scaled):
-                if index in sectors_indexes:
+                if index in sectors_index:
                     last_skip = 0
                     if index == 0:
                         map_full_path.moveTo(*coords)
@@ -312,7 +313,7 @@ class Realtime(Overlay):
 
             # Sector lines
             sectors_index = minfo.mapping.sectors
-            if self.wcfg["show_sector_line"] and isinstance(sectors_index, tuple):
+            if self.wcfg["show_sector_line"] and sectors_index:
                 pen.setWidth(self.wcfg["sector_line_width"])
                 pen.setColor(self.wcfg["sector_line_color"])
                 painter.setPen(pen)
@@ -496,9 +497,9 @@ class Realtime(Overlay):
 
         painter.setBrush(Qt.NoBrush)
 
-        for target_pit_time, auto_prediction in self.get_target_pit_time(target_pit_time, pit_timer, plr_veh_info.inPit):
+        for pit_time, auto_prediction in self.get_target_pit_time(target_pit_time, pit_timer, plr_veh_info.inPit):
             # Calc estimated pitout_time_into based on laptime_pace
-            offset_time_into = pitout_time_extend - target_pit_time
+            offset_time_into = pitout_time_extend - pit_time
             pitout_time_into = (offset_time_into - offset_time_into // laptime_pace * laptime_pace) * laptime_scale
             # Find estimated distance from deltabest_data
             index_higher = calc.binary_search_higher_column(
@@ -524,7 +525,7 @@ class Realtime(Overlay):
             if self.wcfg["show_pitstop_duration"]:
                 painter.fillRect(self.pit_text_shape, self.wcfg["background_color_pitstop_duration"])
                 painter.setPen(self.pen_text["pitstop_duration"])
-                text_time = f"{min(target_pit_time - self.pitout_time_offset, 999):.0f}"
+                text_time = f"{min(pit_time - self.pitout_time_offset, 999):.0f}"
                 painter.drawText(self.pit_text_shape, Qt.AlignCenter, text_time)
 
             painter.resetTransform()

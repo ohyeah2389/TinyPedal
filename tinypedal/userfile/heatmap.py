@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 
-from ..const_file import ConfigType
+from ..constant import CONFIG
 from ..regex_pattern import COMMON_TYRE_COMPOUNDS
 from ..setting import cfg
 from ..template.setting_brakes import BRAKEINFO_DEFAULT
@@ -39,7 +39,7 @@ def add_missing_brake(brake_name: str) -> dict:
     """Add missing brake style to brakes preset"""
     new_data = BRAKEINFO_DEFAULT.copy()
     cfg.user.brakes[brake_name] = new_data
-    cfg.save(config_type=ConfigType.BRAKES)
+    cfg.save(config_type=CONFIG.TYPE_BRAKES)
     return new_data
 
 
@@ -54,18 +54,17 @@ def save_brake_failure_thickness(brake_name: str, failure: float) -> None:
         cfg.user.brakes[brake_name] = new_data
     else:
         brake["failure_thickness"] = failure
-    cfg.save(config_type=ConfigType.BRAKES)
+    cfg.save(config_type=CONFIG.TYPE_BRAKES)
 
 
-def set_predefined_brake_name(class_name: str, vehicle_name: str, is_front: bool) -> str:
+def set_predefined_brake_name(class_name: str, vehicle_name: str, compound_name: str, is_front: bool) -> str:
     """Set common brake name"""
     if class_name == "":
         return ""
-    suffix_name = "Front Brake" if is_front else "Rear Brake"
-    brand_name = select_brand_name(vehicle_name=vehicle_name)
-    if brand_name != "":
-        return f"{class_name} - {brand_name} {suffix_name}"
-    return f"{class_name} - {suffix_name}"
+    brand_name = select_brand_name(vehicle_name)
+    disc_name = "Front Brake" if is_front else "Rear Brake"
+    brake_name = " ".join(n for n in (brand_name, disc_name, compound_name) if n != "")
+    return f"{class_name} - {brake_name}"
 
 
 def select_brake_failure_thickness(brake_name: str) -> float:
@@ -88,14 +87,10 @@ def select_brake_heatmap_name(brake_name: str) -> str:
     return brake.get("heatmap", HEATMAP_DEFAULT_BRAKE)
 
 
-def brake_failure_thickness(class_name: str, vehicle_name: str) -> tuple[float, float, float, float]:
+def brake_failure_thickness(brake_name_front: str, brake_name_rear: str) -> tuple[float, float, float, float]:
     """Get failure thickness"""
-    failure_thickness_f = select_brake_failure_thickness(
-        set_predefined_brake_name(class_name, vehicle_name, True)
-    )
-    failure_thickness_r = select_brake_failure_thickness(
-        set_predefined_brake_name(class_name, vehicle_name, False)
-    )
+    failure_thickness_f = select_brake_failure_thickness(brake_name_front)
+    failure_thickness_r = select_brake_failure_thickness(brake_name_rear)
     return (
         failure_thickness_f,
         failure_thickness_f,
@@ -108,9 +103,9 @@ def brake_failure_thickness(class_name: str, vehicle_name: str) -> tuple[float, 
 def add_missing_compound(compound_name: str) -> dict:
     """Add missing compound style to compounds preset"""
     new_data = COMPOUNDINFO_DEFAULT.copy()
-    new_data["symbol"] = set_predefined_compound_symbol(compound_name)
+    new_data["symbol"] = set_predefined_compound_symbol(compound_name.split("-")[-1].strip())
     cfg.user.compounds[compound_name] = new_data
-    cfg.save(config_type=ConfigType.COMPOUNDS)
+    cfg.save(config_type=CONFIG.TYPE_COMPOUNDS)
     return new_data
 
 
@@ -119,7 +114,6 @@ def set_predefined_compound_symbol(compound_name: str) -> str:
     for compound in COMMON_TYRE_COMPOUNDS:
         if re.search(compound[0], compound_name, flags=re.IGNORECASE):
             return compound[1]
-    compound_name = compound_name.split("-")[-1].strip()
     if compound_name:  # use first letter if available
         return compound_name[0].upper()
     return "?"

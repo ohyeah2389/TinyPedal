@@ -30,13 +30,12 @@ import shutil
 from time import localtime, monotonic, sleep, strftime, time
 from typing import Callable
 
-from ..const_file import FileExt
-from ..setting_validator import PresetValidator
+from ..constant import FILE
 
 logger = logging.getLogger(__name__)
 
 
-def set_backup_timestamp(prefix: str = ".backup", timestamp: bool = True) -> str:
+def set_backup_timestamp(prefix: str = FILE.EXT_BACKUP, timestamp: bool = True) -> str:
     """Set backup timestamp"""
     if timestamp:
         time_local = strftime("%Y-%m-%d-%H-%M-%S", localtime())
@@ -58,19 +57,29 @@ def copy_setting(dict_user: dict) -> dict:
 
 def load_setting_json_file(
     filename: str, filepath: str, dict_def: dict, file_info: str = "user preset",
-    validator: Callable[[dict, dict], dict] = PresetValidator.user_preset,
+    validator: Callable[[dict, dict], dict] | None = None, max_attempts: int = 5,
 ) -> dict:
     """Load setting json file & verify"""
     filename_source = f"{filepath}{filename}"
-    try:
-        with open(filename_source, "r", encoding="utf-8") as jsonfile:
-            setting_user = json.load(jsonfile)
-        # Verify & assign setting
-        setting_user = validator(setting_user, dict_def)
-    except FileNotFoundError:
-        logger.info("USERDATA: %s not found, fall back to default", filename)
-        setting_user = copy_setting(dict_def)
-    except (AttributeError, IndexError, KeyError, TypeError, ValueError, OSError):
+    # Start loading attempts
+    attempts = max_attempts
+    while attempts > 0:
+        try:
+            with open(filename_source, "r", encoding="utf-8") as jsonfile:
+                setting_user = json.load(jsonfile)
+            # Verify & assign setting
+            if callable(validator):
+                setting_user = validator(setting_user, dict_def)
+            break
+        except FileNotFoundError:
+            logger.info("USERDATA: %s not found, fall back to default", filename)
+            setting_user = copy_setting(dict_def)
+            break
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError, OSError):
+            logger.error("USERDATA: %s failed loading, %s attempt(s) left", filename, attempts - 1, exc_info=(attempts <= 1))
+        attempts -= 1
+        sleep(0.05)
+    else:
         logger.error("USERDATA: %s failed loading, fall back to default", filename)
         create_backup_file(filename, filepath, set_backup_timestamp(), show_log=True)
         setting_user = copy_setting(dict_def)
@@ -81,24 +90,32 @@ def load_setting_json_file(
 
 def load_style_json_file(
     filename: str, filepath: str, dict_def: dict, file_info: str = "style preset",
-    validator: Callable[[dict], bool] | None = None,
+    validator: Callable[[dict], bool] | None = None, max_attempts: int = 5,
 ) -> dict:
     """Load style json file & verify (optional)"""
     filename_source = f"{filepath}{filename}"
     msg_text = "loaded"
-    try:
-        with open(filename_source, "r", encoding="utf-8") as jsonfile:
-            style_user = json.load(jsonfile)
-        # Whether to validate style
-        if validator is not None:
-            if validator(style_user):
+    # Start loading attempts
+    attempts = max_attempts
+    while attempts > 0:
+        try:
+            with open(filename_source, "r", encoding="utf-8") as jsonfile:
+                style_user = json.load(jsonfile)
+            # Whether to validate style
+            if callable(validator) and validator(style_user):
                 create_backup_file(filename, filepath, set_backup_timestamp(), show_log=True)
                 msg_text = "updated"
-    except FileNotFoundError:
-        logger.info("USERDATA: %s not found, fall back to default", filename)
-        style_user = copy_setting(dict_def)
-        msg_text = "updated"
-    except (AttributeError, IndexError, KeyError, TypeError, ValueError, OSError):
+            break
+        except FileNotFoundError:
+            logger.info("USERDATA: %s not found, fall back to default", filename)
+            style_user = copy_setting(dict_def)
+            msg_text = "updated"
+            break
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError, OSError):
+            logger.error("USERDATA: %s failed loading, %s attempt(s) left", filename, attempts - 1, exc_info=(attempts <= 1))
+        attempts -= 1
+        sleep(0.05)
+    else:
         logger.error("USERDATA: %s failed loading, fall back to default", filename)
         create_backup_file(filename, filepath, set_backup_timestamp(), show_log=True)
         style_user = copy_setting(dict_def)
@@ -124,12 +141,17 @@ def save_json_file(
 
 
 def verify_json_file(
-    dict_user: dict, filename: str, filepath: str, extension: str = ""
+    dict_user: dict | None, filename: str, filepath: str, extension: str = ""
 ) -> bool:
     """Verify saved json file"""
     filename_source = f"{filepath}{filename}{extension}"
     try:
         with open(filename_source, "r", encoding="utf-8") as jsonfile:
+            # Check load only
+            if dict_user is None:
+                json.load(jsonfile)
+                return True
+            # Compare saved data with loaded
             saved = json.dumps(json.load(jsonfile))
             loaded = json.dumps(dict_user)
             return saved == loaded
@@ -147,7 +169,7 @@ def copy_and_verify_file(filename_source: str, filename_copied: str) -> bool:
 
 
 def create_backup_file(
-    filename: str, filepath: str, extension: str = FileExt.BAK, show_log: bool = False
+    filename: str, filepath: str, extension: str = FILE.EXT_BACKUP, show_log: bool = False
 ) -> bool:
     """Create backup file before saving"""
     filename_source = f"{filepath}{filename}"
@@ -168,7 +190,7 @@ def create_backup_file(
 
 
 def restore_backup_file(
-    filename: str, filepath: str, extension: str = FileExt.BAK
+    filename: str, filepath: str, extension: str = FILE.EXT_BACKUP
 ) -> bool:
     """Restore backup file if saving failed"""
     filename_backup = f"{filepath}{filename}{extension}"
@@ -188,7 +210,7 @@ def restore_backup_file(
 
 
 def copy_and_rename_backup_file(
-    filename: str, filepath: str, extension: str = FileExt.BAK
+    filename: str, filepath: str, extension: str = FILE.EXT_BACKUP
 ) -> bool:
     """Copy and rename backup file if restoring backup failed"""
     filename_backup = f"{filepath}{filename}{extension}"
@@ -208,7 +230,7 @@ def copy_and_rename_backup_file(
 
 
 def delete_backup_file(
-    filename: str, filepath: str, extension: str = FileExt.BAK
+    filename: str, filepath: str, extension: str = FILE.EXT_BACKUP
 ) -> bool:
     """Delete backup file"""
     filename_backup = f"{filepath}{filename}{extension}"

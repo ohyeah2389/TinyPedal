@@ -30,42 +30,21 @@ from time import sleep
 from types import MappingProxyType
 from typing import Any
 
-from .const_api import API_MAP_CONFIG
-from .const_app import APP_NAME
-from .const_common import EMPTY_DICT
-from .const_file import ConfigType, FileExt
+from .constant import API, CONFIG, DATA, FILE
 from .setting_validator import PresetValidator, StyleValidator
-from .template.setting_api import API_DEFAULT
-from .template.setting_brakes import BRAKES_DEFAULT
-from .template.setting_classes import CLASSES_DEFAULT
-from .template.setting_common import COMMON_DEFAULT
-from .template.setting_compounds import COMPOUNDS_DEFAULT
-from .template.setting_filelock import FILELOCK_DEFAULT
-from .template.setting_global import GLOBAL_DEFAULT
-from .template.setting_heatmap import HEATMAP_DEFAULT
-from .template.setting_module import MODULE_DEFAULT
-from .template.setting_shortcuts import (
-    SHORTCUTS_GENERAL,
-    SHORTCUTS_MODULE,
-    SHORTCUTS_PRESET,
-    SHORTCUTS_WIDGET,
-)
-from .template.setting_tracks import TRACKS_DEFAULT
-from .template.setting_widget import WIDGET_DEFAULT
-from .userfile import set_global_config_path, set_user_data_path
 from .userfile.json_setting import (
-    copy_setting,
     load_setting_json_file,
     load_style_json_file,
     save_and_verify_json_file,
 )
+from .userpath import set_user_data_path
 from .validator import is_allowed_filename
 
 logger = logging.getLogger(__name__)
 
 
 class FileName:
-    """File name"""
+    """File name (with extension)"""
 
     __slots__ = (
         "config",
@@ -82,18 +61,18 @@ class FileName:
 
     def __init__(self):
         # Global preset
-        self.config = f"config{FileExt.JSON}"
-        self.filelock = f"config{FileExt.LOCK}"
-        self.shortcuts = f"shortcuts{FileExt.JSON}"
+        self.config = f"config{FILE.EXT_JSON}"
+        self.filelock = f"config{FILE.EXT_LOCK}"
+        self.shortcuts = f"shortcuts{FILE.EXT_JSON}"
         # User preset
-        self.setting = f"default{FileExt.JSON}"
+        self.setting = f"default{FILE.EXT_JSON}"
         # Style preset
-        self.brakes = f"brakes{FileExt.JSON}"
-        self.brands = f"brands{FileExt.JSON}"
-        self.classes = f"classes{FileExt.JSON}"
-        self.compounds = f"compounds{FileExt.JSON}"
-        self.heatmap = f"heatmap{FileExt.JSON}"
-        self.tracks = f"tracks{FileExt.JSON}"
+        self.brakes = f"brakes{FILE.EXT_JSON}"
+        self.brands = f"brands{FILE.EXT_JSON}"
+        self.classes = f"classes{FILE.EXT_JSON}"
+        self.compounds = f"compounds{FILE.EXT_JSON}"
+        self.heatmap = f"heatmap{FILE.EXT_JSON}"
+        self.tracks = f"tracks{FILE.EXT_JSON}"
 
 
 class FilePath:
@@ -115,7 +94,7 @@ class FilePath:
 
     def __init__(self):
         # Global path, should not be modified
-        self.config = set_global_config_path(APP_NAME)
+        self.config = ""
         # User setting path
         self.settings = ""
         # User data path
@@ -156,9 +135,28 @@ class Preset:
         "tracks",
     )
 
-    def __init__(self, default: bool = False):
-        if not default:
+    def set_default(self):
+        """Set default setting (one time only)"""
+        if hasattr(self, "config"):
             return
+        from .template.setting_api import API_DEFAULT
+        from .template.setting_brakes import BRAKES_DEFAULT
+        from .template.setting_classes import CLASSES_DEFAULT
+        from .template.setting_common import COMMON_DEFAULT
+        from .template.setting_compounds import COMPOUNDS_DEFAULT
+        from .template.setting_filelock import FILELOCK_DEFAULT
+        from .template.setting_global import GLOBAL_DEFAULT
+        from .template.setting_heatmap import HEATMAP_DEFAULT
+        from .template.setting_module import MODULE_DEFAULT
+        from .template.setting_shortcuts import (
+            SHORTCUTS_GENERAL,
+            SHORTCUTS_MODULE,
+            SHORTCUTS_PRESET,
+            SHORTCUTS_WIDGET,
+        )
+        from .template.setting_tracks import TRACKS_DEFAULT
+        from .template.setting_widget import WIDGET_DEFAULT
+
         # Global preset
         self.config = MappingProxyType(GLOBAL_DEFAULT)
         self.filelock = MappingProxyType(FILELOCK_DEFAULT)
@@ -167,7 +165,7 @@ class Preset:
         self.setting = MappingProxyType(ChainMap(WIDGET_DEFAULT, MODULE_DEFAULT, API_DEFAULT, COMMON_DEFAULT))
         # Style preset
         self.brakes = MappingProxyType(BRAKES_DEFAULT)
-        self.brands = EMPTY_DICT
+        self.brands = DATA.EMPTY_DICT
         self.classes = MappingProxyType(CLASSES_DEFAULT)
         self.compounds = MappingProxyType(COMPOUNDS_DEFAULT)
         self.heatmap = MappingProxyType(HEATMAP_DEFAULT)
@@ -198,7 +196,7 @@ class Setting:
         self.version_update = 0
         # Settings
         self.filename = FileName()
-        self.default = Preset(default=True)
+        self.default = Preset()
         self.user = Preset()
         self.path = FilePath()
 
@@ -248,13 +246,16 @@ class Setting:
     def get_primary_preset_name(self, preset_name: str) -> str:
         """Get primary preset name and verify"""
         if is_allowed_filename(preset_name):
-            full_preset_name = f"{preset_name}{FileExt.JSON}"
+            full_preset_name = f"{preset_name}{FILE.EXT_JSON}"
             if os.path.exists(f"{self.path.settings}{full_preset_name}"):
                 return full_preset_name
         return ""
 
     def load_global(self):
         """Load global setting, should only done once per launch"""
+        # Delayed init
+        self.default.set_default()
+        # Load setting
         self.user.config = load_setting_json_file(
             filename=self.filename.config,
             filepath=self.path.config,
@@ -292,10 +293,11 @@ class Setting:
         new_settings_path = os.path.abspath(self.path.settings)
         # Update preset name if settings path changed
         if new_settings_path != old_settings_path:
-            self.set_next_to_load(f"{self.preset_files()[0]}{FileExt.JSON}")
+            self.set_next_to_load(f"{self.preset_files()[0]}{FILE.EXT_JSON}")
 
     def load_user(self):
         """Load user settings, should be called after loaded global setting"""
+        loading_attempts = self.max_loading_attempts
         # Load preset JSON file
         if self._setting_to_load != "":
             filename_setting_temp = self._setting_to_load
@@ -306,6 +308,8 @@ class Setting:
             filename=filename_setting_temp,
             filepath=self.path.settings,
             dict_def=self.default.setting,
+            validator=PresetValidator.user_preset,
+            max_attempts=loading_attempts,
         )
         self.filename.setting = filename_setting_temp
         # Load style JSON file
@@ -314,35 +318,41 @@ class Setting:
             filepath=self.path.settings,
             dict_def=self.default.brakes,
             validator=StyleValidator.brakes,
+            max_attempts=loading_attempts,
         )
         self.user.brands = load_style_json_file(
             filename=self.filename.brands,
             filepath=self.path.settings,
             dict_def=self.default.brands,
+            max_attempts=loading_attempts,
         )
         self.user.classes = load_style_json_file(
             filename=self.filename.classes,
             filepath=self.path.settings,
             dict_def=self.default.classes,
             validator=StyleValidator.classes,
+            max_attempts=loading_attempts,
         )
         self.user.compounds = load_style_json_file(
             filename=self.filename.compounds,
             filepath=self.path.settings,
             dict_def=self.default.compounds,
             validator=StyleValidator.compounds,
+            max_attempts=loading_attempts,
         )
         self.user.heatmap = load_style_json_file(
             filename=self.filename.heatmap,
             filepath=self.path.settings,
             dict_def=self.default.heatmap,
             validator=StyleValidator.heatmap,
+            max_attempts=loading_attempts,
         )
         self.user.tracks = load_style_json_file(
             filename=self.filename.tracks,
             filepath=self.path.settings,
             dict_def=self.default.tracks,
             validator=StyleValidator.tracks,
+            max_attempts=loading_attempts,
         )
 
     @property
@@ -363,7 +373,7 @@ class Setting:
     @property
     def api_key(self) -> str:
         """Get selected api config key name"""
-        return API_MAP_CONFIG[self.api_name]
+        return API.MAP_CONFIG[self.api_name]
 
     def preset_files(self, by_date: bool = True, reverse: bool = True) -> list[str]:
         """Get user preset JSON filename list
@@ -379,7 +389,7 @@ class Setting:
             date_file_list = (
                 (os.path.getmtime(f"{self.path.settings}{_filename}"), _filename[:-5])
                 for _filename in os.listdir(self.path.settings)
-                if _filename.lower().endswith(FileExt.JSON)
+                if _filename.lower().endswith(FILE.EXT_JSON)
             )
             valid_file_list = [
                 _filename[1]
@@ -390,7 +400,7 @@ class Setting:
             name_file_list = (
                 _filename[:-5]
                 for _filename in os.listdir(self.path.settings)
-                if _filename.lower().endswith(FileExt.JSON)
+                if _filename.lower().endswith(FILE.EXT_JSON)
             )
             valid_file_list = [
                 _filename
@@ -401,16 +411,39 @@ class Setting:
             return valid_file_list
         return ["default"]
 
+    def backup_files(self, filepath: str, extension: str = FILE.EXT_BACKUP) -> list[str]:
+        """Get backup filename list
+
+        Arguments:
+            filepath: folder to search backup file.
+            extension: file extension for partial matching backup file.
+
+        Returns:
+            Backup filename list.
+        """
+        date_file_list = (
+            (os.path.getmtime(f"{filepath}{_filename}"), _filename)
+            for _filename in os.listdir(filepath)
+            if extension in _filename.lower()
+        )
+        valid_file_list = [
+            _filename[1]
+            for _filename in sorted(date_file_list, reverse=True)
+        ]
+        if valid_file_list:
+            return valid_file_list
+        return []
+
     def create(self, filename: str):
         """Create default setting"""
         save_and_verify_json_file(
-            dict_user=copy_setting(self.default.setting),
+            dict_user=dict(self.default.setting),
             filename=filename,
             filepath=self.path.settings,
             max_attempts=self.max_saving_attempts,
         )
 
-    def save(self, delay: int = 66, config_type: str = ConfigType.SETTING, next_task: bool = False):
+    def save(self, delay: int = 66, config_type: str = CONFIG.TYPE_SETTING, next_task: bool = False):
         """Save trigger, limit to one save operation for a given period.
 
         Args:
@@ -441,9 +474,9 @@ class Setting:
         elif filename not in self._save_queue:
             # Save to global config path
             if config_type in (
-                ConfigType.CONFIG,
-                ConfigType.FILELOCK,
-                ConfigType.SHORTCUTS,
+                CONFIG.TYPE_CONFIG,
+                CONFIG.TYPE_FILELOCK,
+                CONFIG.TYPE_SHORTCUTS,
             ):
                 filepath = self.path.config
             # Save to settings (preset) path
@@ -487,6 +520,11 @@ class Setting:
     def max_saving_attempts(self) -> int:
         """Get max saving attempts"""
         return max(self.application["maximum_saving_attempts"], 3)
+
+    @property
+    def max_loading_attempts(self) -> int:
+        """Get max loading attempts"""
+        return max(self.application["maximum_loading_attempts"], 1)
 
 
 # Assign config setting

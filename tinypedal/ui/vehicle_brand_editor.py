@@ -41,16 +41,11 @@ from PySide2.QtWidgets import (
 
 from ..api_control import api
 from ..async_request import get_response, resolve_hostname, set_header_get
-from ..const_api import API_LMU_ALIAS, API_LMU_CONFIG, API_RF2_ALIAS, API_RF2_CONFIG
-from ..const_file import ConfigType, FileFilter
-from ..setting import cfg, copy_setting
-from ..userfile.brands import extract_lmu_brand_name
-from ._common import (
-    BaseEditor,
-    CompactButton,
-    TableBatchReplace,
-    UIScaler,
-)
+from ..constant import API, CONFIG, FILE
+from ..setting import cfg
+from ..userfile.brands import extract_brand_name
+from ..userfile.json_setting import copy_setting
+from ._common import BaseEditor, CompactButton, TableBatchReplace, UIScaler
 
 HEADER_BRANDS = "Vehicle name","Brand name"
 
@@ -95,12 +90,6 @@ class VehicleBrandEditor(BaseEditor):
 
         import_rf2 = import_menu.addAction("RF2 Rest API")
         import_rf2.triggered.connect(self.import_from_rf2)
-
-        import_lmu = import_menu.addAction("LMU Rest API (Primary)")
-        import_lmu.triggered.connect(self.import_from_lmu)
-
-        import_lmu_alt = import_menu.addAction("LMU Rest API (Alternative)")
-        import_lmu_alt.triggered.connect(self.import_from_lmu_alt)
 
         import_json = import_menu.addAction("JSON file")
         import_json.triggered.connect(self.import_from_file)
@@ -157,32 +146,12 @@ class VehicleBrandEditor(BaseEditor):
 
     def import_from_rf2(self):
         """Import brand from RF2"""
-        setting_api = cfg.user.setting[API_RF2_CONFIG]
+        setting_api = cfg.user.setting[API.CONFIG_RF2]
         self.import_from_restapi(
-            API_RF2_ALIAS,
+            API.ALIAS_RF2,
             setting_api["url_host"],
             setting_api["url_port"],
             "/rest/race/car",
-        )
-
-    def import_from_lmu(self):
-        """Import brand from LMU (primary source)"""
-        setting_api = cfg.user.setting[API_LMU_CONFIG]
-        self.import_from_restapi(
-            API_LMU_ALIAS,
-            setting_api["url_host"],
-            setting_api["url_port"],
-            "/rest/race/car",
-        )
-
-    def import_from_lmu_alt(self):
-        """Import brand from LMU (alternative source)"""
-        setting_api = cfg.user.setting[API_LMU_CONFIG]
-        self.import_from_restapi(
-            API_LMU_ALIAS,
-            setting_api["url_host"],
-            setting_api["url_port"],
-            "/rest/sessions/getAllVehicles",
         )
 
     def import_from_restapi(self, sim_name: str, url_host: str, url_port: int, resource_name: str):
@@ -204,7 +173,7 @@ class VehicleBrandEditor(BaseEditor):
 
     def import_from_file(self):
         """Import brand from file"""
-        filename_full = QFileDialog.getOpenFileName(self, filter=FileFilter.JSON)[0]
+        filename_full = QFileDialog.getOpenFileName(self, filter=FILE.FILTER_JSON)[0]
         if not filename_full:
             return
 
@@ -224,13 +193,7 @@ class VehicleBrandEditor(BaseEditor):
 
     def parse_brand_data(self, vehicles: dict):
         """Parse brand data"""
-        if vehicles[0].get("desc"):
-            # Match LMU data format
-            brands_db = {
-                veh["desc"]: veh["manufacturer"]
-                for veh in vehicles
-            }
-        elif vehicles[0].get("name"):
+        if vehicles[0].get("name"):
             # Match RF2 data format
             brands_db = {
                 parse_vehicle_name(veh): veh["manufacturer"]
@@ -257,8 +220,8 @@ class VehicleBrandEditor(BaseEditor):
         # Add all missing vehicle name from active session
         veh_total = api.read.vehicle.total_vehicles()
         for index in range(veh_total):
-            veh_name = api.read.vehicle.vehicle_name(index)
-            brand_name = extract_lmu_brand_name(api.read.vehicle.vehicle_model(index), "Unknown")
+            veh_name = api.read.vehicle.vehicle_model(index)
+            brand_name = extract_brand_name(api.read.vehicle.vehicle_model(index), "Unknown")
             if not self.is_value_in_table(veh_name, self.table_brands):
                 self.add_vehicle_entry(row_index, veh_name, brand_name)
                 row_index += 1
@@ -326,7 +289,7 @@ class VehicleBrandEditor(BaseEditor):
         """Save setting"""
         self.update_brands_temp()
         cfg.user.brands = copy_setting(self.brands_temp)
-        cfg.save(0, config_type=ConfigType.BRANDS)
+        cfg.save(0, config_type=CONFIG.TYPE_BRANDS)
         while cfg.is_saving:  # wait saving finish
             time.sleep(0.01)
         self.reloading()

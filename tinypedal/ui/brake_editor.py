@@ -34,16 +34,11 @@ from PySide2.QtWidgets import (
 )
 
 from ..api_control import api
-from ..const_file import ConfigType
-from ..setting import cfg, copy_setting
+from ..constant import CONFIG
+from ..setting import cfg
 from ..userfile.heatmap import HEATMAP_DEFAULT_BRAKE, set_predefined_brake_name
-from ._common import (
-    BaseEditor,
-    CompactButton,
-    FloatTableItem,
-    UIScaler,
-    #TableBatchReplace,
-)
+from ..userfile.json_setting import copy_setting
+from ._common import BaseEditor, CompactButton, FloatTableItem, UIScaler
 
 HEADER_BRAKES = "Brake name","Failure (mm)","Heatmap name"
 
@@ -141,8 +136,11 @@ class BrakeEditor(BaseEditor):
 
     def __add_option_combolist(self, key):
         """Combo droplist string"""
+        available_heatmap = cfg.user.heatmap.keys()
         combo_edit = QComboBox()
-        combo_edit.addItems(cfg.user.heatmap.keys())
+        combo_edit.addItems(available_heatmap)
+        if key not in available_heatmap:
+            key = HEATMAP_DEFAULT_BRAKE
         combo_edit.setCurrentText(key)
         combo_edit.currentTextChanged.connect(self.set_modified)
         return combo_edit
@@ -160,13 +158,14 @@ class BrakeEditor(BaseEditor):
         veh_total = api.read.vehicle.total_vehicles()
         for index in range(veh_total):
             class_name = api.read.vehicle.class_name(index)
-            vehicle_name = api.read.vehicle.vehicle_name(index)
+            vehicle_name = api.read.vehicle.vehicle_model(index)
+            compound_front, compound_rear = api.read.brake.compound_name()
             brake_names = (
-                set_predefined_brake_name(class_name, vehicle_name, True),
-                set_predefined_brake_name(class_name, vehicle_name, False),
+                set_predefined_brake_name(class_name, vehicle_name, compound_front, True),
+                set_predefined_brake_name(class_name, vehicle_name, compound_rear, False),
             )
             for brake in brake_names:
-                if not self.is_value_in_table(brake, self.table_brakes):
+                if brake and not self.is_value_in_table(brake, self.table_brakes):
                     self.add_brake_entry(row_index, brake, 0)
                     self.table_brakes.setCurrentCell(row_index, 0)
                     row_index += 1
@@ -248,7 +247,7 @@ class BrakeEditor(BaseEditor):
         """Save setting"""
         self.update_brakes_temp()
         cfg.user.brakes = copy_setting(self.brakes_temp)
-        cfg.save(0, config_type=ConfigType.BRAKES)
+        cfg.save(0, config_type=CONFIG.TYPE_BRAKES)
         while cfg.is_saving:  # wait saving finish
             time.sleep(0.01)
         self.reloading()

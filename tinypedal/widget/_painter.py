@@ -28,8 +28,6 @@ from PySide2.QtCore import QRectF, Qt
 from PySide2.QtGui import QFont, QPainter, QPen, QPixmap
 from PySide2.QtWidgets import QWidget
 
-from ..const_common import GEAR_SEQUENCE
-
 
 class WheelGaugeBar(QWidget):
     """Wheel gauge bar"""
@@ -41,6 +39,7 @@ class WheelGaugeBar(QWidget):
         bar_width: int,
         bar_height: int,
         offset_y: int = 0,
+        decimals: int = 0,
         display_range: int = 100,
         input_color: str = "",
         fg_color: str = "",
@@ -55,6 +54,7 @@ class WheelGaugeBar(QWidget):
         super().__init__(parent)
         self.last = -1
         self.display_range = display_range
+        self.decimals = max(decimals, 0)
         self.width_scale = bar_width / self.display_range
         self.input_color = input_color
         self.bg_color = bg_color
@@ -123,7 +123,7 @@ class WheelGaugeBar(QWidget):
         if self.maxrange_color:
             painter.fillRect(self.rect_max, self.maxrange_color)
         painter.setPen(self.pen)
-        painter.drawText(self.rect_text, self.align, f"{self.last:.0f}")
+        painter.drawText(self.rect_text, self.align, f"{self.last:.{self.decimals}f}")
 
 
 class PedalInputBar(QWidget):
@@ -347,9 +347,9 @@ class GearGaugeBar(QWidget):
         self.pen.setColor(fg_color)
         self.setFixedSize(width, height)
 
-    def update_input(self, gear: int, speed: int, color_index: int, bg_color: str):
+    def update_input(self, gear: str, speed: int, color_index: int, bg_color: str):
         """Update input"""
-        self.gear = GEAR_SEQUENCE(gear, "N")
+        self.gear = gear
         self.speed = speed
         self.color_index = color_index
         self.bg_color = bg_color
@@ -670,10 +670,16 @@ class DeltaLapTime(QWidget):
                 continue
 
             if -999 < delta < 0:  # player time gain
-                text = f"{-delta:.1f}"[:3].strip(".")
+                if delta < -9.94:
+                    text = f"{-delta:.0f}"
+                else:
+                    text = f"{-delta:.1f}"
                 fg_color = self.fg_gain
             elif 0 < delta < 999:  # player time loss
-                text = f"{delta:.1f}"[:3].strip(".")
+                if delta > 9.94:
+                    text = f"{delta:.0f}"
+                else:
+                    text = f"{delta:.1f}"
                 fg_color = self.fg_loss
             elif delta == 0:
                 text = "0.0"

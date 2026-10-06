@@ -49,6 +49,7 @@ MODULE_DEFAULT = {
         "update_interval": 10,
         "idle_update_interval": 400,
         "minimum_delta_distance": 5,
+        "fuel_density": 0.75,
     },
     "module_hybrid": {
         "enable": True,
@@ -60,6 +61,7 @@ MODULE_DEFAULT = {
         "enable": True,
         "update_interval": 10,
         "idle_update_interval": 400,
+        "minimum_node_distance": 5,
     },
     "module_notes": {
         "enable": True,
@@ -103,6 +105,7 @@ MODULE_DEFAULT = {
         "enable": True,
         "update_interval": 10,
         "idle_update_interval": 400,
+        "enable_wheel_dimension_measurement": True,
         "minimum_axle_rotation": 4,
         "maximum_rotation_difference_front": 0.002,
         "maximum_rotation_difference_rear": 0.002,
@@ -112,7 +115,8 @@ MODULE_DEFAULT = {
         "average_suspension_position_margin": 1,
         "enable_suspension_measurement_while_offroad": False,
         "wheel_lift_off_threshold": 1,
-        "cornering_radius_sampling_interval": 10,
+        "estimated_unsprung_weight": 200,
+        "minimum_static_weight_override": -1,
     },
 }
 

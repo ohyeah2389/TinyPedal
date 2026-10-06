@@ -20,12 +20,12 @@
 Default common setting template
 """
 
-from ..const_api import API_DEFAULT_NAME
+from ..constant import API
 from ..version import __version__
 
 COMMON_DEFAULT = {
     "preset": {
-        "api_name": API_DEFAULT_NAME,
+        "api_name": API.NAME_LMU,
         "version": __version__,
     },
     "overlay": {
@@ -44,6 +44,7 @@ COMMON_DEFAULT = {
         "turbo_pressure_unit": "bar",
         "tyre_pressure_unit": "kPa",
         "weight_unit": "Kilogram",
+        "wind_speed_unit": "m/s",
     },
     "pace_notes_playback": {
         "enable": False,

@@ -27,10 +27,9 @@ from PySide2.QtWidgets import QMenu, QMessageBox
 
 from .. import app_signal, loader
 from ..api_control import api
-from ..const_app import PLATFORM, URL_FAQ, URL_USER_GUIDE
-from ..const_file import ConfigType
+from ..constant import APP, CONFIG, PLATFORM
 from ..formatter import format_option_name
-from ..module_info import minfo
+from ..module_control import mctrl
 from ..overlay_control import octrl
 from ..setting import cfg
 from ..update import update_checker
@@ -197,30 +196,33 @@ class ResetDataMenu(QMenu):
 
     def reset_deltabest(self):
         """Reset deltabest data"""
-        self.__confirmation(
+        if self.__confirmation(
             data_type="delta best",
             extension="csv",
             filepath=cfg.path.delta_best,
             filename=api.read.session.combo_name(),
-        )
+        ):
+            mctrl.reload("module_delta")
 
     def reset_energydelta(self):
         """Reset energy delta data"""
-        self.__confirmation(
+        if self.__confirmation(
             data_type="energy delta",
             extension="energy",
             filepath=cfg.path.energy_delta,
             filename=api.read.session.combo_name(),
-        )
+        ):
+            mctrl.reload("module_fuel")
 
     def reset_fueldelta(self):
         """Reset fuel delta data"""
-        self.__confirmation(
+        if self.__confirmation(
             data_type="fuel delta",
             extension="fuel",
             filepath=cfg.path.fuel_delta,
             filename=api.read.session.combo_name(),
-        )
+        ):
+            mctrl.reload("module_fuel")
 
     def reset_consumption(self):
         """Reset consumption history data"""
@@ -230,36 +232,30 @@ class ResetDataMenu(QMenu):
             filepath=cfg.path.fuel_delta,
             filename=api.read.session.combo_name(),
         ):
-            minfo.history.reset_consumption()
+            mctrl.reload("module_stint")
 
     def reset_sectorbest(self):
         """Reset sector best data"""
-        self.__confirmation(
+        if self.__confirmation(
             data_type="sector best",
             extension="sector",
             filepath=cfg.path.sector_best,
             filename=api.read.session.combo_name(),
-        )
+        ):
+            mctrl.reload("module_sectors")
 
     def reset_trackmap(self):
         """Reset trackmap data"""
-        self.__confirmation(
+        if self.__confirmation(
             data_type="track map",
             extension="svg",
             filepath=cfg.path.track_map,
             filename=api.read.session.track_name(),
-        )
+        ):
+            mctrl.reload("module_mapping")
 
     def __confirmation(self, data_type: str, extension: str, filepath: str, filename: str) -> bool:
         """Message confirmation, returns true if file deleted"""
-        # Check if on track
-        if api.read.state.active():
-            QMessageBox.warning(
-                self._parent,
-                "Error",
-                "Cannot reset data while on track.",
-            )
-            return False
         # Check if file exist
         filename_full = f"{filepath}{filename}.{extension}"
         if not os.path.exists(filename_full):
@@ -337,7 +333,7 @@ class ConfigMenu(QMenu):
         else:  # Linux
             try:
                 import subprocess
-                subprocess.run(["xdg-open", filepath])
+                subprocess.run(["xdg-open", filepath], check=False)
             except (FileNotFoundError, subprocess.SubprocessError):
                 error = True
         if error:
@@ -353,7 +349,7 @@ class ConfigMenu(QMenu):
             parent=self._parent,
             key_name="application",
             preset_name=cfg.filename.config,
-            config_type=ConfigType.CONFIG,
+            config_type=CONFIG.TYPE_CONFIG,
             user_setting=cfg.user.config,
             default_setting=cfg.default.config,
             reload_func=menu_reload_preset,
@@ -366,7 +362,7 @@ class ConfigMenu(QMenu):
             parent=self._parent,
             key_name="compatibility",
             preset_name=cfg.filename.config,
-            config_type=ConfigType.CONFIG,
+            config_type=CONFIG.TYPE_CONFIG,
             user_setting=cfg.user.config,
             default_setting=cfg.default.config,
             reload_func=menu_reload_preset,
@@ -379,7 +375,7 @@ class ConfigMenu(QMenu):
             parent=self._parent,
             key_name="user_path",
             preset_name=cfg.filename.config,
-            config_type=ConfigType.CONFIG,
+            config_type=CONFIG.TYPE_CONFIG,
             user_setting=cfg.user.config,
             default_setting=cfg.default.config,
             reload_func=menu_reload_preset,
@@ -393,7 +389,7 @@ class ConfigMenu(QMenu):
             parent=self._parent,
             key_name="notification",
             preset_name=cfg.filename.config,
-            config_type=ConfigType.CONFIG,
+            config_type=CONFIG.TYPE_CONFIG,
             user_setting=cfg.user.config,
             default_setting=cfg.default.config,
             reload_func=menu_refresh_only,
@@ -406,7 +402,7 @@ class ConfigMenu(QMenu):
             parent=self._parent,
             key_name="units",
             preset_name=cfg.filename.setting,
-            config_type=ConfigType.SETTING,
+            config_type=CONFIG.TYPE_SETTING,
             user_setting=cfg.user.setting,
             default_setting=cfg.default.setting,
             reload_func=menu_reload_only,
@@ -429,8 +425,13 @@ class APIMenu(QMenu):
     def __init__(self, title, parent):
         super().__init__(title, parent)
         self._parent = parent
+        self.reset_menu()
+        self.aboutToShow.connect(self.refresh_menu)
 
-        # API selector
+    def reset_menu(self):
+        """Reset menu"""
+        self.clear()
+
         self.actions_api = self.__api_selector()
         self.addSeparator()
 
@@ -453,8 +454,6 @@ class APIMenu(QMenu):
         restart_api = self.addAction("Restart API")
         restart_api.triggered.connect(menu_restart_api)
 
-        self.aboutToShow.connect(self.refresh_menu)
-
     def refresh_menu(self):
         """Refresh menu"""
         selected_api_name = cfg.api_name
@@ -470,36 +469,23 @@ class APIMenu(QMenu):
         """Toggle API selection mode"""
         enabled = cfg.telemetry["enable_api_selection_from_preset"]
         cfg.telemetry["enable_api_selection_from_preset"] = not enabled
-        cfg.save(config_type=ConfigType.CONFIG)
+        cfg.save(config_type=CONFIG.TYPE_CONFIG)
         menu_reload_only()
 
     def toggle_carsetup_backup(self):
         """Toggle auto car setup backup"""
         enabled = cfg.telemetry["enable_auto_backup_car_setup"]
         cfg.telemetry["enable_auto_backup_car_setup"] = not enabled
-        cfg.save(config_type=ConfigType.CONFIG)
+        cfg.save(config_type=CONFIG.TYPE_CONFIG)
         menu_refresh_only()
 
     def toggle_legacy_api(self):
         """Toggle legacy API selection"""
         enabled = cfg.telemetry["enable_legacy_api_selection"]
-        if enabled:
-            state = "Disable"
-        else:
-            state = "Enable"
-        msg_text = (
-            f"{state} <b>Legacy API</b> selection and restart <b>TinyPedal</b>?"
-        )
-        restart_msg = QMessageBox.question(
-            self._parent, "Legacy API", msg_text,
-            buttons=QMessageBox.Yes | QMessageBox.No,
-            defaultButton=QMessageBox.No,
-        )
-        if restart_msg != QMessageBox.Yes:
-            return
         cfg.telemetry["enable_legacy_api_selection"] = not enabled
-        cfg.save(config_type=ConfigType.CONFIG)
-        loader.restart()
+        cfg.save(config_type=CONFIG.TYPE_CONFIG)
+        menu_restart_api()
+        self.reset_menu()
 
     def open_config_api(self):
         """Config API"""
@@ -507,7 +493,7 @@ class APIMenu(QMenu):
             parent=self._parent,
             key_name=cfg.api_key,
             preset_name=cfg.filename.setting,
-            config_type=ConfigType.SETTING,
+            config_type=CONFIG.TYPE_SETTING,
             user_setting=cfg.user.setting,
             default_setting=cfg.default.setting,
             reload_func=menu_restart_api,
@@ -523,8 +509,7 @@ class APIMenu(QMenu):
 
         actions_api = QActionGroup(self)
 
-        for _api in api.available:
-            api_name = _api.NAME
+        for api_name in api.available:
             option = self.addAction(api_name)
             option.setCheckable(True)
             option.triggered.connect(lambda checked=True, name=api_name: self.__toggle_option(checked, name))
@@ -537,9 +522,9 @@ class APIMenu(QMenu):
             return
         cfg.api_name = api_name
         if cfg.telemetry["enable_api_selection_from_preset"]:
-            save_type = ConfigType.SETTING
+            save_type = CONFIG.TYPE_SETTING
         else:
-            save_type = ConfigType.CONFIG
+            save_type = CONFIG.TYPE_CONFIG
         cfg.save(config_type=save_type)
         menu_reload_only()
 
@@ -695,7 +680,7 @@ class WindowMenu(QMenu):
     def __toggle_option(option_name: str):
         """Toggle option"""
         cfg.application[option_name] = not cfg.application[option_name]
-        cfg.save(config_type=ConfigType.CONFIG)
+        cfg.save(config_type=CONFIG.TYPE_CONFIG)
 
 
 class HelpMenu(QMenu):
@@ -738,8 +723,8 @@ class HelpMenu(QMenu):
 
     def open_user_guide(self):
         """Open user guide link"""
-        QDesktopServices.openUrl(URL_USER_GUIDE)
+        QDesktopServices.openUrl(APP.URL_USER_GUIDE)
 
     def open_faq(self):
         """Open FAQ link"""
-        QDesktopServices.openUrl(URL_FAQ)
+        QDesktopServices.openUrl(APP.URL_FAQ)

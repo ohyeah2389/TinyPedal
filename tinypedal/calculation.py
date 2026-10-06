@@ -22,20 +22,17 @@ Calculation function
 
 from __future__ import annotations
 
-from math import acos, atan, atan2, ceil, cos, degrees, dist, hypot, radians, sin
+from functools import partial
+from math import acos, atan, atan2, ceil, cos, degrees, dist, hypot, radians, sin, tan
 from statistics import fmean
-from typing import Any, Sequence, Tuple
+from typing import Any, Callable, Sequence
 
-from .const_common import FLOAT_INF
+from .constant import DATA
 
-CoordXY = Tuple[float, float]
-
-distance = dist  # coordinates distance
+distance = dist  # distance between 2 coordinates
+hypotenuse = hypot  # distance from origin point (0) to a point
 mean = fmean
-vel2speed = hypot  # velocity to speed
-rad2deg = degrees  # radians to degrees
-oriyaw2rad = atan2  # orientation yaw to radians
-deg2rad = radians  # degrees to radians
+oriyaw = atan2  # orientation yaw to radians
 
 
 # Common
@@ -144,25 +141,25 @@ def gforce(value: float, g_accel: float = 9.8) -> float:
     return 0
 
 
-def force_ratio(value1: float, value2: float, min_limit: float = 1) -> float:
-    """Force ratio from Newtons"""
-    if value2 > min_limit or value2 < -min_limit:
-        return abs(100 * value1 / value2)
+def force_ratio(side: float, total: float, min_limit: float = 1) -> float:
+    """Force ratio (fraction) from Newtons"""
+    if total > min_limit or total < -min_limit:
+        return abs(side / total)
     return 0
 
 
 def part_to_whole_ratio(part: float, whole: float, median: float = 0) -> float:
-    """Part to whole ratio"""
+    """Part to whole ratio (fraction) - range 0.0 to 1.0"""
     abs_part = abs(part)
     abs_whole = abs(whole)
     if abs_whole > 0:
         if abs_part < abs_whole:
-            return 100 * part / whole
-        return 100
+            return part / whole
+        return 1.0
     return median
 
 
-def rotate_coordinate(ori_rad: float, pos_x: float, pos_y: float) -> CoordXY:
+def rotate_coordinate(ori_rad: float, pos_x: float, pos_y: float) -> tuple[float, float]:
     """Rotate x y coordinates"""
     sin_rad = sin(ori_rad)
     cos_rad = cos(ori_rad)
@@ -308,7 +305,7 @@ def slope_percent(height: float, length: float) -> float:
 def slope_angle(height: float, length: float) -> float:
     """Slope angle (degree)"""
     if length:
-        return rad2deg(atan(height / length))
+        return degrees(atan(height / length))
     return 0
 
 
@@ -332,7 +329,7 @@ def curvature(radius: float) -> float:
 
 
 def tri_coords_circle_center(
-    x1: float, y1: float, x2: float, y2: float, x3: float, y3: float) -> CoordXY:
+    x1: float, y1: float, x2: float, y2: float, x3: float, y3: float) -> tuple[float, float]:
     """Tri-coordinates circle center x, y"""
     p = 0.00000001  # bypass zero division
     k1 = (y2 - y1 + p) / (x2 - x1 + p)
@@ -354,7 +351,7 @@ def tri_coords_angle(a_len: float, b_len: float, c_len: float) -> float:
 
 
 def quad_coords_angle(
-    coords_center: CoordXY, coords_start: CoordXY, coords_mid: CoordXY, coords_end: CoordXY) -> float:
+    coords_center: tuple[float, float], coords_start: tuple[float, float], coords_mid: tuple[float, float], coords_end: tuple[float, float]) -> float:
     """Quad-coordinates angle (degree)"""
     center1_edge = distance(coords_start, coords_mid)
     center2_edge = distance(coords_mid, coords_end)
@@ -363,7 +360,7 @@ def quad_coords_angle(
     end_edge = distance(coords_center, coords_end)
     rad1 = tri_coords_angle(center1_edge, start_edge, mid_edge)
     rad2 = tri_coords_angle(center2_edge, mid_edge, end_edge)
-    return rad2deg(rad1 + rad2)
+    return degrees(rad1 + rad2)
 
 
 def turning_direction(yaw_rad: float, x1: float, y1: float, x2: float, y2: float) -> int:
@@ -384,7 +381,12 @@ def turning_direction(yaw_rad: float, x1: float, y1: float, x2: float, y2: float
 def clock_time(seconds: float, start: float = 0, scale: float = 1) -> float:
     """Clock time (seconds) looped in full 24 hours, 0 to 86400"""
     time_curr = start + seconds * scale
-    return time_curr - time_curr // 86400 * 86400
+    clock_time = time_curr - time_curr // 86400 * 86400
+    if clock_time < 0:
+        return 0
+    if clock_time > 86400:
+        return 86400
+    return clock_time
 
 
 def clock_time_to_seconds(clock_time: str) -> float:
@@ -440,7 +442,7 @@ def sec2stinttime(seconds: float) -> str:
 
 
 def delta_telemetry(
-    dataset: list, position: float, target: float,
+    dataset: Sequence[tuple[float, float]], position: float, target: float,
     condition: bool = True, position_column: int = 0, target_column: int = 1) -> float:
     """Calculate delta telemetry data"""
     if not condition:
@@ -459,6 +461,16 @@ def delta_telemetry(
     return 0
 
 
+def delta_laptime(opt_data: list, plr_data: list, max_output: int, max_record: int = 5) -> tuple[float, ...]:
+    """Generate delta from target player's lap time data set"""
+    return tuple(
+        plr_data[index] - opt_data[index]
+        if plr_data[index] > 0 < opt_data[index]  # check invalid lap time
+        else DATA.MAX_SECONDS
+        for index in range(max_record - max_output, max_record)
+    )
+
+
 def exp_mov_avg(factor: float, ema_last: float, source: float) -> float:
     """Calculate exponential moving average"""
     return ema_last + factor * (source - ema_last)
@@ -469,9 +481,22 @@ def ema_factor(samples: int, min_samples: int = 1) -> float:
     return 2 / (max(samples, min_samples) + 1)
 
 
-def accumulated_sum(data: list, end_index: int) -> float:
-    """Calculate accumulated sum"""
-    return sum(data[:end_index + 1])
+def ema_filter(samples: int, min_samples: int = 1) -> Callable[[float, float], float]:
+    """Partial EMA filter function"""
+    return partial(exp_mov_avg, ema_factor(samples, min_samples))
+
+
+def sector_sum(data: list, end_index: int, max_value: float = DATA.MAX_SECONDS) -> float:
+    """Calculate accumulated sector sum"""
+    time_sum = 0.0
+    for i, v in enumerate(data):
+        if i > end_index:
+            break
+        if 0 < v < max_value:
+            time_sum += v
+        else:  # stop if any invalid value
+            break
+    return time_sum
 
 
 # Search
@@ -484,9 +509,8 @@ def search_column_key(key: Sequence, column: int | None = None):
 
 def linear_search_higher(data: Sequence, target: float, column: int | None = None) -> int:
     """linear search nearest value higher index from unordered list"""
-    #key = lambda x:x[column] if column >= 0 else x
     end = len(data) - 1
-    nearest = FLOAT_INF
+    nearest = DATA.FLOAT_INF
     for index, data_row in enumerate(data):
         if target <= search_column_key(data_row, column) < nearest:
             nearest = search_column_key(data_row, column)
@@ -559,7 +583,7 @@ def select_grade(data: Sequence[Sequence], source: float) -> Any:
 
 
 # Plot
-def zoom_map(coords: Sequence[CoordXY], map_scale: float, margin: int = 0):
+def zoom_map(coords: Sequence[tuple[float, float]], map_scale: float, margin: int = 0):
     """Zoom map data to specific scale, then add margin"""
     # Separate X & Y coordinates
     x_range, y_range = tuple(zip(*coords))
@@ -573,14 +597,14 @@ def zoom_map(coords: Sequence[CoordXY], map_scale: float, margin: int = 0):
     return tuple(zip(x_range_scaled, y_range_scaled)), map_size, map_offset
 
 
-def rotate_map(coords: Sequence[CoordXY], angle: int):
+def rotate_map(coords: Sequence[tuple[float, float]], angle: int):
     """Rotate map coordinates"""
-    rot_rad = deg2rad(angle)
+    rot_rad = radians(angle)
     for x, y in coords:
         yield rotate_coordinate(rot_rad, x, y)
 
 
-def scale_map(coords: Sequence[CoordXY], area_size: int, margin: int = 0, angle: int = 0):
+def scale_map(coords: Sequence[tuple[float, float]], area_size: int, margin: int = 0, angle: int = 0):
     """Scale map data"""
     # Rotate & separate X & Y coordinates
     if angle != 0:
@@ -602,7 +626,7 @@ def scale_map(coords: Sequence[CoordXY], area_size: int, margin: int = 0, angle:
     return tuple(zip(x_range_scaled, y_range_scaled)), map_range, map_scale, map_offset
 
 
-def scale_elevation(coords: Sequence[CoordXY], area_width: int, area_height: int):
+def scale_elevation(coords: Sequence[tuple[float, float]], area_width: int, area_height: int):
     """Scale elevation data"""
     # Separate X & Y coordinates
     x_range, y_range = tuple(zip(*coords))
@@ -616,7 +640,7 @@ def scale_elevation(coords: Sequence[CoordXY], area_width: int, area_height: int
     return tuple(zip(x_range_scaled, y_range_scaled)), map_range, map_scale
 
 
-def svg_view_box(coords: Sequence[CoordXY], margin: int = 0) -> str:
+def svg_view_box(coords: Sequence[tuple[float, float]], margin: int = 0) -> str:
     """Map bounding box"""
     # Separate X & Y coordinates
     x_range, y_range = tuple(zip(*coords))
@@ -640,7 +664,7 @@ def skip_map_nodes(total: int, limit: int, detail_level: int) -> int:
 
 
 def line_intersect_coords(
-    coord_a: CoordXY, coord_b: CoordXY, rad: float, length: float):
+    coord_a: tuple[float, float], coord_b: tuple[float, float], rad: float, length: float):
     """Create intersect line coordinates from 2 coordinates
 
     coord_a: coordinate A
@@ -648,7 +672,7 @@ def line_intersect_coords(
     rad: amount rotation (radians) to apply
     length: length between coordinates
     """
-    yaw_rad = oriyaw2rad(
+    yaw_rad = oriyaw(
         coord_b[1] - coord_a[1],
         coord_b[0] - coord_a[0]
     )
@@ -823,11 +847,25 @@ def wear_weighted(wear_curr_lap: float, wear_last_lap: float, lap_into: float) -
 
 
 # Wheel
-def rotation_radius(v_speed: float, w_rotation: float) -> float:
-    """Angular speed to radius"""
-    if w_rotation:
-        return abs(v_speed / w_rotation)
+def rotation_radius(linear_velocity: float, angular_velocity: float) -> float:
+    """Wheel radius (meters) = linear velocity (m/s) / angular speed (rad/s)"""
+    if angular_velocity:
+        return abs(linear_velocity / angular_velocity)
     return 0
+
+
+def angular_velocity(linear_velocity: float, radius: float) -> float:
+    """Angular speed (radians per second) = linear velocity (m/s) / radius (m)"""
+    if radius:
+        return linear_velocity / radius
+    return 0
+
+
+def yaw_rate(lateral_accel: float, speed: float, min_speed: float = 8) -> float:
+    """Yaw rate (radians per second) = Lateral acceleration (m/s^2) / speed (m/s)"""
+    if speed > min_speed:
+        return lateral_accel / speed
+    return 0.0
 
 
 def slip_ratio(w_rotation: float, w_radius: float, v_speed: float) -> float:
@@ -837,10 +875,10 @@ def slip_ratio(w_rotation: float, w_radius: float, v_speed: float) -> float:
     return 0
 
 
-def slip_angle(v_lat: float, v_lgt: float) -> float:
+def slip_angle(lateral_velocity: float, longitudinal_velocity: float) -> float:
     """Slip angle (radians)"""
-    if v_lgt:
-        return atan(v_lat / v_lgt)
+    if longitudinal_velocity:
+        return atan(lateral_velocity / longitudinal_velocity)
     return 0
 
 
@@ -856,7 +894,7 @@ def wheel_rotation_bias(rot_axle: float, rot_left: float, rot_right: float) -> f
     """Wheel rotation bias (difference) against axle rotation"""
     if rot_axle:
         return abs((rot_left - rot_right) / rot_axle)
-    return 0
+    return -1
 
 
 def wheel_rotation_ratio(rot_axle: float, rot_left: float) -> float:
@@ -874,3 +912,54 @@ def differential_locking_percent(rot_axle: float, rot_left: float) -> float:
     if rot_axle:
         return 1 - abs(rot_left / rot_axle - 1)
     return 0
+
+
+def ackermann_percentage(
+    left_wheel_angle: float,
+    right_wheel_angle: float,
+    wheel_track: float,
+    wheelbase: float,
+    min_angle: float = 0,
+) -> float:
+    """Ackermann percentage (fraction) between raw angle difference and true ackermann angle
+
+    0.0 = parallel angle, 1.0 = true ackermann angle
+    """
+    if wheel_track <= 0 or wheelbase <= 0:
+        return 0.0
+    # Left turn (toe < 0)
+    if left_wheel_angle < -min_angle > right_wheel_angle:
+        inner_raw = abs(left_wheel_angle)
+        outer_raw = abs(right_wheel_angle)
+    # Right turn (toe > 0)
+    elif left_wheel_angle > min_angle < right_wheel_angle:
+        inner_raw = abs(right_wheel_angle)
+        outer_raw = abs(left_wheel_angle)
+    else:
+        return 0.0
+    diff_raw = inner_raw - outer_raw
+    if not diff_raw:
+        return 0.0
+    # Inner true ackermann angle based on outer raw angle
+    cot_inner_true = 1 / tan(radians(outer_raw)) - wheel_track / wheelbase
+    if not cot_inner_true:
+        return 0.0
+    inner_true = degrees(atan(1 / cot_inner_true))
+    diff_true = inner_true - outer_raw
+    if diff_true:
+        return diff_raw / diff_true
+    return 0.0
+
+
+def turning_radius(wheel_angle: float, wheelbase: float, min_angle: float = 0) -> float:
+    """Turning radius, unit based on wheelbase"""
+    if wheelbase <= 0 or -min_angle <= wheel_angle <= min_angle:
+        return 0.0
+    return wheelbase / tan(radians(wheel_angle))
+
+
+def steering_ratio(steer_angle: float, wheel_angle: float) -> float:
+    """Steering ratio"""
+    if wheel_angle:
+        return steer_angle / wheel_angle
+    return 0.0

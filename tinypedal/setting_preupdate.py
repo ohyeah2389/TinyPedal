@@ -45,6 +45,9 @@ def preupdate_user_setting(preset_version: tuple[int, int, int], dict_user: dict
     # Create target version and update function list
     # Very old version may be removed later
     target_versions = (
+        ((2, 49, 9), _user_prior_2_49_9),  # 2026-08-30
+        ((2, 49, 2), _user_prior_2_49_2),  # 2026-08-09
+        ((2, 48, 7), _user_prior_2_48_7),  # 2026-07-27
         ((2, 47, 8), _user_prior_2_47_8),  # 2026-07-03
         ((2, 46, 4), _user_prior_2_46_4),  # 2026-05-23
         ((2, 44, 2), _user_prior_2_44_2),  # 2026-03-29
@@ -70,6 +73,40 @@ def _global_prior_2_43_0(dict_user: dict):
 
 
 # User setting update function
+def _user_prior_2_49_9(dict_user: dict):
+    # Rename steering widget to steering_meter
+    steering = dict_user.get("steering")
+    if isinstance(steering, dict):
+        dict_user["steering_meter"] = steering.copy()
+    # Update wheel_toe widget
+    wheel_toe = dict_user.get("wheel_toe")
+    if isinstance(wheel_toe, dict):
+        _rename_key(wheel_toe, "toe_in", "toe_angle")
+        if wheel_toe.get("caption_text") == "toe in":
+            wheel_toe["caption_text"] = "toe angle"
+
+
+def _user_prior_2_49_2(dict_user: dict):
+    # Update brake_temperature widget
+    brake_temperature = dict_user.get("brake_temperature")
+    if isinstance(brake_temperature, dict):
+        if "inner_gap" in brake_temperature:
+            brake_temperature["horizontal_gap"] = brake_temperature["inner_gap"]
+            brake_temperature["vertical_gap"] = brake_temperature["inner_gap"]
+
+
+def _user_prior_2_48_7(dict_user: dict):
+    # Update flag widget
+    flag = dict_user.get("flag")
+    if isinstance(flag, dict):
+        if flag.get("speed_limiter_text") == "LIMITER":
+            flag["speed_limiter_text"] = "L"
+    # Update laps_and_position widget
+    laps_and_position = dict_user.get("laps_and_position")
+    if isinstance(laps_and_position, dict):
+        _rename_key(laps_and_position, "lap_number", "laps")
+
+
 def _user_prior_2_47_8(dict_user: dict):
     # Update ride_height widget
     ride_height = dict_user.get("ride_height")

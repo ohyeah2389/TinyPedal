@@ -35,16 +35,11 @@ from PySide2.QtWidgets import (
 )
 
 from ..api_control import api
-from ..const_file import ConfigType
-from ..setting import cfg, copy_setting
+from ..constant import CONFIG
+from ..setting import cfg
 from ..template.setting_tracks import TRACKINFO_DEFAULT
-from ._common import (
-    BaseEditor,
-    ClockTableItem,
-    CompactButton,
-    FloatTableItem,
-    UIScaler,
-)
+from ..userfile.json_setting import copy_setting
+from ._common import BaseEditor, ClockTableItem, CompactButton, FloatTableItem, UIScaler
 
 HEADER_TRACKS = (
     "Track name",
@@ -52,6 +47,7 @@ HEADER_TRACKS = (
     "Pit exit (m)",
     "Pit speed (m/s)",
     "Speed trap (m)",
+    "Orient (°)",
     "Sunrise",
     "Sunset",
 )
@@ -65,7 +61,7 @@ class TrackInfoEditor(BaseEditor):
     def __init__(self, parent):
         super().__init__(parent)
         self.set_utility_title("Track Info Editor")
-        self.setMinimumSize(UIScaler.size(64), UIScaler.size(35))
+        self.setMinimumSize(UIScaler.size(68), UIScaler.size(35))
 
         self.tracks_temp = copy_setting(cfg.user.tracks)
 
@@ -160,7 +156,7 @@ class TrackInfoEditor(BaseEditor):
         column_index = 1
         for key, value in TRACKINFO_DEFAULT.items():
             if isinstance(value, float):
-                item = FloatTableItem(track_data.get(key, value))
+                item = FloatTableItem(round(track_data.get(key, value), 4))
             else:
                 item = ClockTableItem(track_data.get(key, value))
             self.table_tracks.setItem(row_index, column_index, item)
@@ -283,7 +279,7 @@ class TrackInfoEditor(BaseEditor):
         """Save setting"""
         self.update_tracks_temp()
         cfg.user.tracks = copy_setting(self.tracks_temp)
-        cfg.save(0, config_type=ConfigType.TRACKS)
+        cfg.save(0, config_type=CONFIG.TYPE_TRACKS)
         while cfg.is_saving:  # wait saving finish
             time.sleep(0.01)
         self.reloading()

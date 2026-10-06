@@ -30,7 +30,7 @@ from PySide2.QtGui import QFont, QFontMetrics, QPalette, QPixmap
 from PySide2.QtWidgets import QGridLayout, QLayout, QMenu, QWidget
 
 from .. import app_signal, overlay_signal, realtime_state
-from ..const_app import APP_NAME
+from ..constant import APP
 from ..formatter import format_module_name
 from ..regex_pattern import FONT_WEIGHT_MAP
 from ..setting import Setting
@@ -55,7 +55,7 @@ class Base(QWidget):
         self.wcfg = validate_option(self.cfg.user.setting[widget_name])
 
         # Base setting
-        self.setWindowTitle(f"{APP_NAME} - {widget_name.capitalize()}")
+        self.setWindowTitle(f"{APP.TINYPEDAL} - {widget_name.capitalize()}")
         self.move(self.wcfg["position_x"], self.wcfg["position_y"])
 
         # Set update timer
@@ -241,7 +241,7 @@ class Base(QWidget):
 class Overlay(Base):
     """Inherit base window, add common GUI methods"""
 
-    def config_font(self, name: str = "", size: int | float = 1, weight: str = "") -> QFont:
+    def config_font(self, name: str = "", size: float = 1, weight: str = "") -> QFont:
         """Config font
 
         Used for draw text in widget that uses QPainter,
@@ -561,16 +561,13 @@ class Overlay(Base):
             option: layout option name in Widget JSON.
             default: default layout orientation, 0 = vertical, 1 = horizontal.
         """
-        layout = self.layout()
-        assert isinstance(layout, QGridLayout)
+        layout: QGridLayout = self.layout()
         if self.wcfg.get(option, 0) == default:
-            order = column, row  # Vertical layout
-        else:
-            order = row, column  # Horizontal layout
+            column, row = row, column  # Vertical layout
         if isinstance(target, QWidget):
-            layout.addWidget(target, *order)
+            layout.addWidget(target, row, column)
         else:
-            layout.addLayout(target, *order)
+            layout.addLayout(target, row, column)
 
 
 def validate_option(config: dict) -> dict:

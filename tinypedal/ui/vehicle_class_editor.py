@@ -33,16 +33,11 @@ from PySide2.QtWidgets import (
 )
 
 from ..api_control import api
-from ..const_common import EMPTY_DICT
-from ..const_file import ConfigType
+from ..constant import CONFIG, DATA
 from ..formatter import random_color_class
-from ..setting import cfg, copy_setting
-from ._common import (
-    QVAL_COLOR,
-    BaseEditor,
-    CompactButton,
-    UIScaler,
-)
+from ..setting import cfg
+from ..userfile.json_setting import copy_setting
+from ._common import QVAL_COLOR, BaseEditor, CompactButton, UIScaler
 from ._option import ColorEdit
 
 HEADER_CLASSES = "Class name","Alias name","Color"
@@ -211,14 +206,14 @@ class VehicleClassEditor(BaseEditor):
             self.classes_temp[class_name] = {
                 "alias": abbr_name,
                 "color": color_string,
-                "preset": loaded.get(class_name, EMPTY_DICT).get("preset", ""),
+                "preset": loaded.get(class_name, DATA.EMPTY_DICT).get("preset", ""),
             }
 
     def save_setting(self):
         """Save setting"""
         self.update_classes_temp()
         cfg.user.classes = copy_setting(self.classes_temp)
-        cfg.save(0, config_type=ConfigType.CLASSES)
+        cfg.save(0, config_type=CONFIG.TYPE_CLASSES)
         while cfg.is_saving:  # wait saving finish
             time.sleep(0.01)
         self.reloading()

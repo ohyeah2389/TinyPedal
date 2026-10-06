@@ -20,7 +20,8 @@
 Force Widget
 """
 
-from ..const_common import TEXT_NA
+from .. import units
+from ..constant import DATA
 from ..module_info import minfo
 from ._base import Overlay
 
@@ -47,10 +48,14 @@ class Realtime(Overlay):
         bar_padx = self.set_padding(self.wcfg["font_size"], self.wcfg["bar_padding"])
         bar_width = font_m.width * 6 + bar_padx
 
+        # Config units
+        self.unit_weight = units.set_unit_weight(self.cfg.units["weight_unit"])
+        self.symbol_weight = units.set_symbol_weight(self.cfg.units["weight_unit"])
+
         # Longitudinal g-force
         if self.wcfg["show_longitudinal_g_force"]:
             self.bar_gforce_lgt = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=bar_width,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -65,7 +70,7 @@ class Realtime(Overlay):
         # Lateral g-force
         if self.wcfg["show_lateral_g_force"]:
             self.bar_gforce_lat = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=bar_width,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -80,7 +85,7 @@ class Realtime(Overlay):
         # Downforce ratio
         if self.wcfg["show_downforce_ratio"]:
             self.bar_df_ratio = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=bar_width,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -99,7 +104,7 @@ class Realtime(Overlay):
                 self.wcfg["warning_color_liftforce"],
             )
             self.bar_df_front = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=bar_width,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -118,7 +123,7 @@ class Realtime(Overlay):
                 self.wcfg["warning_color_liftforce"],
             )
             self.bar_df_rear = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=bar_width,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -130,8 +135,56 @@ class Realtime(Overlay):
                 column=self.wcfg["display_order_rear_downforce"],
             )
 
+        # Estimated static weight
+        if self.wcfg["show_estimated_static_weight"]:
+            self.bar_static = self.set_rawtext(
+                text=DATA.TEXT_NA,
+                width=bar_width,
+                fixed_height=font_m.height,
+                offset_y=font_m.voffset,
+                fg_color=self.wcfg["font_color_estimated_static_weight"],
+                bg_color=self.wcfg["background_color_estimated_static_weight"],
+            )
+            self.set_primary_orient(
+                target=self.bar_static,
+                column=self.wcfg["display_order_estimated_static_weight"],
+            )
+
+        # Estimated dynamic weight
+        if self.wcfg["show_estimated_dynamic_weight"]:
+            self.bar_dynamic = self.set_rawtext(
+                text=DATA.TEXT_NA,
+                width=bar_width,
+                fixed_height=font_m.height,
+                offset_y=font_m.voffset,
+                fg_color=self.wcfg["font_color_estimated_dynamic_weight"],
+                bg_color=self.wcfg["background_color_estimated_dynamic_weight"],
+            )
+            self.set_primary_orient(
+                target=self.bar_dynamic,
+                column=self.wcfg["display_order_estimated_dynamic_weight"],
+            )
+
+        # Acceleration reduction
+        if self.wcfg["show_acceleration_reduction"]:
+            self.bar_accloss = self.set_rawtext(
+                text=DATA.TEXT_NA,
+                width=bar_width,
+                fixed_height=font_m.height,
+                offset_y=font_m.voffset,
+                fg_color=self.wcfg["font_color_acceleration_reduction"],
+                bg_color=self.wcfg["background_color_acceleration_reduction"],
+            )
+            self.set_primary_orient(
+                target=self.bar_accloss,
+                column=self.wcfg["display_order_acceleration_reduction"],
+            )
+
     def timerEvent(self, event):
         """Update when vehicle on track"""
+        min_static_weight = minfo.wheels.minimumStaticWeight
+        total_static_weight = minfo.wheels.totalStaticWeight
+
         # Longitudinal g-force
         if self.wcfg["show_longitudinal_g_force"]:
             gf_lgt = round(minfo.force.lgtGForceRaw, 2)
@@ -144,7 +197,7 @@ class Realtime(Overlay):
 
         # Downforce ratio
         if self.wcfg["show_downforce_ratio"]:
-            df_ratio = round(minfo.force.downForceRatio, 2)
+            df_ratio = round(minfo.force.downForceRatio * 100, 2)
             self.update_df_ratio(self.bar_df_ratio, df_ratio)
 
         # Front downforce
@@ -156,6 +209,27 @@ class Realtime(Overlay):
         if self.wcfg["show_rear_downforce"]:
             df_rear = round(minfo.force.downForceRear)
             self.update_df_rear(self.bar_df_rear, df_rear)
+
+        # Estimated static weight
+        if self.wcfg["show_estimated_static_weight"]:
+            if self.wcfg["show_minimum_static_weight_without_fuel"]:
+                static_weight = min_static_weight
+            else:
+                static_weight = total_static_weight
+            self.update_weight(self.bar_static, round(static_weight))
+
+        # Estimated dynamic weight
+        if self.wcfg["show_estimated_dynamic_weight"]:
+            dynamic_weight = minfo.wheels.totalDynamicWeight
+            self.update_weight(self.bar_dynamic, round(dynamic_weight))
+
+        # Acceleration reduction
+        if self.wcfg["show_acceleration_reduction"]:
+            if total_static_weight > 0:
+                accel_loss = (1 - min_static_weight / total_static_weight) * 100
+            else:
+                accel_loss = 0.0
+            self.update_acceleration_reduction(self.bar_accloss, accel_loss)
 
     # GUI update methods
     def update_gf_lgt(self, target, data):
@@ -188,15 +262,15 @@ class Realtime(Overlay):
         """Downforce ratio"""
         if target.last != data:
             target.last = data
-            text = f"{data:.2f}"[:5].strip(".")
-            target.text = f"{text}%"
+            text_ratio = f"{data:.2f}"
+            target.text = f"{text_ratio:.5}%"
             target.update()
 
     def update_df_front(self, target, data):
         """Downforce front"""
         if target.last != data:
             target.last = data
-            target.text = f"F{abs(data):5.0f}"[:6]
+            target.text = f"F{abs(data):5.0f}"
             target.bg = self.bar_style_df_front[data < 0]
             target.update()
 
@@ -204,6 +278,21 @@ class Realtime(Overlay):
         """Downforce rear"""
         if target.last != data:
             target.last = data
-            target.text = f"R{abs(data):5.0f}"[:6]
+            target.text = f"R{abs(data):5.0f}"
             target.bg = self.bar_style_df_rear[data < 0]
+            target.update()
+
+    def update_weight(self, target, data):
+        """Estimated weight"""
+        if target.last != data:
+            target.last = data
+            target.text = f"{self.unit_weight(data):.0f}{self.symbol_weight}"
+            target.update()
+
+    def update_acceleration_reduction(self, target, data):
+        """Acceleration reduction"""
+        if target.last != data:
+            target.last = data
+            text_accel = f"{data:.3f}"
+            target.text = f"{text_accel:.5}%"
             target.update()

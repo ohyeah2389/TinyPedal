@@ -34,16 +34,11 @@ from PySide2.QtWidgets import (
 )
 
 from ..api_control import api
-from ..const_file import ConfigType
-from ..setting import cfg, copy_setting
+from ..constant import CONFIG
+from ..setting import cfg
 from ..userfile.heatmap import HEATMAP_DEFAULT_TYRE, set_predefined_compound_symbol
-from ._common import (
-    QVAL_COLOR,
-    BaseEditor,
-    CompactButton,
-    TableBatchReplace,
-    UIScaler,
-)
+from ..userfile.json_setting import copy_setting
+from ._common import QVAL_COLOR, BaseEditor, CompactButton, TableBatchReplace, UIScaler
 from ._option import ColorEdit
 
 HEADER_COMPOUNDS = "Compound name", "Symbol", "Color", "Heatmap name"
@@ -155,8 +150,11 @@ class TyreCompoundEditor(BaseEditor):
 
     def __add_option_combolist(self, key):
         """Combo droplist string"""
+        available_heatmap = cfg.user.heatmap.keys()
         combo_edit = QComboBox()
-        combo_edit.addItems(cfg.user.heatmap.keys())
+        combo_edit.addItems(available_heatmap)
+        if key not in available_heatmap:
+            key = HEATMAP_DEFAULT_TYRE
         combo_edit.setCurrentText(key)
         combo_edit.currentTextChanged.connect(self.set_modified)
         return combo_edit
@@ -175,7 +173,7 @@ class TyreCompoundEditor(BaseEditor):
         for index in range(veh_total):
             compounds = set(api.read.tyre.compound_class(index))
             for compound in compounds:
-                if not self.is_value_in_table(compound, self.table_compounds):
+                if compound and not self.is_value_in_table(compound, self.table_compounds):
                     self.add_compound_entry(
                         row_index,
                         compound,
@@ -268,7 +266,7 @@ class TyreCompoundEditor(BaseEditor):
         """Save setting"""
         self.update_compounds_temp()
         cfg.user.compounds = copy_setting(self.compounds_temp)
-        cfg.save(0, config_type=ConfigType.COMPOUNDS)
+        cfg.save(0, config_type=CONFIG.TYPE_COMPOUNDS)
         while cfg.is_saving:  # wait saving finish
             time.sleep(0.01)
         self.reloading()

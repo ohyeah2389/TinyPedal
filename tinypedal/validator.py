@@ -26,30 +26,15 @@ import logging
 import os
 import re
 import time
-from functools import wraps
+from functools import partial
 from math import isfinite
 from time import monotonic
-from typing import Any, Iterable
+from typing import Any, Callable
 
-from .const_common import MAX_SECONDS
-from .const_file import FileExt
+from .constant import DATA, FILE
 from .regex_pattern import CFG_INVALID_FILENAME, rex_hex_color
 
 logger = logging.getLogger(__name__)
-
-
-# Decorator
-def generator_init(func):
-    """Initialize generator for send() method, returns None if StopIteration"""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        generator = func(*args, **kwargs)
-        try:
-            next(generator)
-        except StopIteration:
-            generator = None
-        return generator
-    return wrapper
 
 
 # Value validate
@@ -65,6 +50,15 @@ def bytes_to_str(bytestring: bytes | Any, char_encoding: str = "utf-8") -> str:
     if isinstance(bytestring, bytes):
         return bytestring.decode(encoding=char_encoding, errors="replace").rstrip()
     return ""
+
+
+def string_converter(encoding: str = "utf-8") -> Callable[[bytes], str]:
+    """Set bytes to string converter"""
+    if encoding:
+        encoding = encoding.lower()
+    else:
+        encoding = "utf-8"
+    return partial(bytes_to_str, char_encoding=encoding)
 
 
 def is_allowed_filename(filename: str) -> bool:
@@ -86,11 +80,11 @@ def is_string_number(value: str) -> bool:
         return False
 
 
-def valid_sectors(sector_time: list | Any, max_time: float = MAX_SECONDS) -> bool:
+def valid_sectors(sector_time: list | Any, max_time: float = DATA.MAX_SECONDS) -> bool:
     """Is valid sector time"""
     if isinstance(sector_time, list):
-        return max_time not in sector_time
-    return max_time != sector_time
+        return all(0 < sec < max_time for sec in sector_time)
+    return 0 < sector_time < max_time
 
 
 def is_same_session(
@@ -105,14 +99,6 @@ def is_same_session(
     )
 
 
-def purge_data_key(loaded_dict: dict, ref_keys: Iterable[str]) -> dict:
-    """Purge unwanted key from dict"""
-    for key in tuple(loaded_dict):
-        if key not in ref_keys:
-            loaded_dict.pop(key)
-    return loaded_dict
-
-
 # File validate
 def file_last_modified(filepath: str = "", filename: str = "", extension: str = "") -> float:
     """Check file last modified time, 0 if file not exist"""
@@ -122,13 +108,18 @@ def file_last_modified(filepath: str = "", filename: str = "", extension: str = 
     return 0
 
 
-def image_exists(filepath: str, extension: str = FileExt.PNG, max_size: int = 10_240_000) -> bool:
+def image_exists(filepath: str, extension: str = FILE.EXT_PNG, max_size: int = 10_240_000) -> bool:
     """Validate image file path, file format (default PNG), max file size (default < 10MB)"""
     return (
         os.path.exists(filepath) and
         os.path.getsize(filepath) < max_size and
         filepath.lower().endswith(extension)
     )
+
+
+def is_json_data(data: Any) -> bool:
+    """Is valid json data"""
+    return isinstance(data, (dict, list))
 
 
 # Delta list validate
@@ -150,7 +141,7 @@ def valid_delta_set(data: tuple) -> tuple:
 def valid_delta_raw(dataset: list[tuple[float, float]], final: float, column: int) -> bool:
     """Validate raw delta data set"""
     try:
-        if len(dataset) <= 1:
+        if len(dataset) < 10:  # minimum 10 data samples
             return False
         # Remove rows if source value higher than final value
         while dataset[-1][column] > final:
@@ -221,59 +212,3 @@ def state_timer(interval: float, last: float = 0):
             yield True
         else:
             yield False
-
-
-# Desync check
-@generator_init
-def vehicle_position_sync(max_diff: float = 200, max_desync: int = 20):
-    """Vehicle position synchronization
-
-    Args:
-        max_diff: max delta position (meters). Exceeding max delta counts as new lap.
-        max_desync: max desync counts.
-
-    Sends:
-        pos_curr: current position (meters).
-
-    Yields:
-        Synchronized position (meters).
-    """
-    pos_synced = 0
-    desync_count = 0
-
-    while True:
-        pos_curr = yield pos_synced
-        if pos_curr is None:  # reset
-            pos_curr = 0
-            pos_synced = 0
-            desync_count = 0
-            continue
-        if pos_synced > pos_curr:
-            if desync_count > max_desync or pos_synced - pos_curr > max_diff:
-                desync_count = 0  # reset
-                pos_synced = pos_curr
-            else:
-                desync_count += 1
-        elif pos_synced < pos_curr:
-            pos_synced = pos_curr
-            if desync_count:
-                desync_count = 0
-
-
-@generator_init
-def vehicle_position_interp():
-    """Interpolate vehicle traveled distance based on time delta"""
-    time_last = 0.0
-    dist_last = 0.0
-    dist_est = 0.0
-
-    while True:
-        time_curr, dist_curr = yield dist_est
-
-        if dist_last != dist_curr:
-            dist_delta = dist_curr - dist_last
-            time_delta = time_curr - time_last
-            dist_last = dist_curr
-            time_last = time_curr
-        elif time_delta > 0 < dist_delta:
-            dist_est = dist_last + dist_delta * (time_curr - time_last) / time_delta

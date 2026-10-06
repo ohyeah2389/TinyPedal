@@ -21,7 +21,7 @@ Brake pressure Widget
 """
 
 from ..api_control import api
-from ..const_common import WHEELS_NA, WHEELS_ZERO
+from ..constant import DATA
 from ._base import Overlay
 from ._painter import WheelGaugeBar
 
@@ -89,11 +89,12 @@ class Realtime(Overlay):
                 bar_width=bar_width,
                 bar_height=bar_height,
                 offset_y=font_m.voffset,
+                decimals=self.wcfg["decimal_places"],
                 input_color=self.wcfg["highlight_color"],
                 fg_color=self.wcfg["font_color"],
                 bg_color=self.wcfg["background_color"],
-                maxrange_color=brake_input_color,
                 maxrange_height=max(self.wcfg["brake_input_size"], 0),
+                maxrange_color=brake_input_color,
                 right_side=idx % 2,
                 top_side=idx < 2,
             ) for idx in range(4)
@@ -110,7 +111,7 @@ class Realtime(Overlay):
     def timerEvent(self, event):
         """Update when vehicle on track"""
         brake_pressure = api.read.brake.pressure(scale=100)
-        brake_inputs = WHEELS_NA
+        brake_inputs = DATA.WHEELS_NA
 
         if self.wcfg["show_brake_input"]:
             raw_brake = api.read.inputs.brake_raw()
@@ -121,7 +122,7 @@ class Realtime(Overlay):
                 raw_brake_r = raw_brake * (1 - bbias)
                 brake_inputs = raw_brake_f, raw_brake_f, raw_brake_r, raw_brake_r
             else:
-                brake_inputs = WHEELS_ZERO
+                brake_inputs = DATA.WHEELS_ZERO
 
         for idx, bar_bpres in enumerate(self.bars_bpres):
             self.update_bpres(bar_bpres, brake_pressure[idx], brake_inputs[idx])

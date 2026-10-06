@@ -23,7 +23,7 @@ Common
 from __future__ import annotations
 
 import re
-from typing import Callable
+from typing import Callable, ClassVar
 
 from PySide2.QtCore import QRegularExpression, Qt
 from PySide2.QtGui import (
@@ -50,9 +50,9 @@ from PySide2.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..const_app import APP_NAME
+from ..constant import APP
 from ..validator import is_string_number
-from . import UIScaler
+from ._style import UIScaler
 
 # Validator
 QVAL_INTEGER = QIntValidator(-999999, 999999)
@@ -93,7 +93,7 @@ def singleton_dialog(dialog_type: str, show_error: bool = True):
 class DialogSingleton:
     """Singleton dialog"""
 
-    _instance_type: set[str] = set()
+    _instance_type: ClassVar[set[str]] = set()
 
     def __init__(self):
         raise TypeError("not for instantiate")
@@ -153,8 +153,7 @@ class CompactButton(QPushButton):
     def __init__(self, text, parent=None, has_menu=False):
         super().__init__(text, parent)
         self.setFixedWidth(
-            self.fontMetrics().boundingRect(text).width()
-            + UIScaler.FONT_PIXEL_SCALED * (1 + has_menu)
+            self.fontMetrics().boundingRect(text).width() + UIScaler.size(1 + has_menu)
         )
 
 
@@ -178,7 +177,7 @@ class BaseDialog(QDialog):
 
     def set_utility_title(self, name: str):
         """Set utility dialog title"""
-        self.setWindowTitle(f"{name} - {APP_NAME}")
+        self.setWindowTitle(f"{name} - {APP.TINYPEDAL}")
 
     def confirm_operation(self, title: str = "Confirm", message: str = "") -> bool:
         """Confirm operation"""
@@ -420,10 +419,10 @@ class TableBatchReplace(BaseDialog):
         """Update selector list"""
         column_index = self.table_selector[self.column_selector.currentText()]
         self.search_selector.clear()
-        selector_list = set(
+        selector_list = {
             self.table_data.item(row_index, column_index).text()
             for row_index in range(self.table_data.rowCount())
-        )
+        }
         self.search_selector.addItems(sorted(selector_list))
         self.search_selector.setCurrentText(last_search)
 

@@ -20,11 +20,9 @@
 Wheel camber Widget
 """
 
-from functools import partial
-
 from .. import calculation as calc
-from ..api_control import api
-from ..const_common import TEXT_NA
+from ..constant import DATA
+from ..module_info import minfo
 from ._base import Overlay
 
 
@@ -76,8 +74,12 @@ class Realtime(Overlay):
             gap_vert=self.wcfg["vertical_gap"],
         )
         self.decimals_camber = max(self.wcfg["decimal_places_camber"], 1)
+        self.bar_style_camber = (
+            self.wcfg["font_color_camber"],
+            self.wcfg["font_color_positive_camber"],
+        )
         self.bars_camber = self.set_rawtext(
-            text=TEXT_NA,
+            text=DATA.TEXT_NA,
             width=font_m.width * (3 + self.decimals_camber) + bar_padx,
             fixed_height=font_m.height,
             offset_y=font_m.voffset,
@@ -94,16 +96,13 @@ class Realtime(Overlay):
             target=layout_camber,
             column=1,
         )
-        self.calc_ema_camber = partial(
-            calc.exp_mov_avg,
-            calc.ema_factor(self.wcfg["camber_smoothing_samples"])
-        )
+        self.calc_ema_camber = calc.ema_filter(self.wcfg["camber_smoothing_samples"])
 
         # Camber difference
         if self.wcfg["show_camber_difference"]:
             self.decimals_cdiff = max(self.wcfg["decimal_places_camber_difference"], 1)
             self.bars_cdiff = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=font_m.width * (3 + self.decimals_cdiff) + bar_padx,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -116,34 +115,32 @@ class Realtime(Overlay):
                 layout=layout_camber,
                 targets=self.bars_cdiff,
             )
-            self.calc_ema_cdiff = partial(
-                calc.exp_mov_avg,
-                calc.ema_factor(self.wcfg["camber_difference_smoothing_samples"])
-            )
+            self.calc_ema_cdiff = calc.ema_filter(self.wcfg["camber_difference_smoothing_samples"])
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
         # Camber
-        camber_set = api.read.wheel.camber()
+        camber_set = minfo.wheels.camberAngle
         for camber, bar_camber in zip(camber_set, self.bars_camber):
             self.update_camber(bar_camber, self.calc_ema_camber(bar_camber.last, camber))
 
         # Camber difference
         if self.wcfg["show_camber_difference"]:
-            self.update_cdiff(self.bars_cdiff[0], self.calc_ema_cdiff(self.bars_cdiff[0].last, camber_set[0] - camber_set[1]))
-            self.update_cdiff(self.bars_cdiff[1], self.calc_ema_cdiff(self.bars_cdiff[1].last, camber_set[2] - camber_set[3]))
+            self.update_cdiff(self.bars_cdiff[0], self.calc_ema_cdiff(self.bars_cdiff[0].last, minfo.wheels.frontCamberAngleDifference))
+            self.update_cdiff(self.bars_cdiff[1], self.calc_ema_cdiff(self.bars_cdiff[1].last, minfo.wheels.rearCamberAngleDifference))
 
     # GUI update methods
     def update_camber(self, target, data):
         """Camber data"""
         if target.last != data:
             target.last = data
-            target.text = f"{calc.rad2deg(data):+.{self.decimals_camber}f}"[:3 + self.decimals_camber]
+            target.text = f"{data:+.{self.decimals_camber}f}"[:3 + self.decimals_camber]
+            target.fg = self.bar_style_camber[data >= self.wcfg["positive_camber_threshold"]]
             target.update()
 
     def update_cdiff(self, target, data):
         """Camber difference data"""
         if target.last != data:
             target.last = data
-            target.text = f"{calc.rad2deg(data):+.{self.decimals_cdiff}f}"[:3 + self.decimals_cdiff]
+            target.text = f"{data:+.{self.decimals_cdiff}f}"[:3 + self.decimals_cdiff]
             target.update()

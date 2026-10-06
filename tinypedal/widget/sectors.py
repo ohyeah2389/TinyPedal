@@ -22,12 +22,7 @@ Sectors Widget
 
 from .. import calculation as calc
 from ..api_control import api
-from ..const_common import (
-    MAX_SECONDS,
-    PREV_SECTOR_INDEX,
-    SECTOR_ABBR_ID,
-    TEXT_NOLAPTIME,
-)
+from ..constant import DATA
 from ..module_info import minfo
 from ..validator import valid_sectors
 from ._base import Overlay
@@ -68,7 +63,7 @@ class Realtime(Overlay):
             self.wcfg["font_color_target_time"],
         )
         self.bar_time_target = self.set_rawtext(
-            text=f"{self.prefix_best}{TEXT_NOLAPTIME: >{9 + self.extra_width}}",
+            text=f"{self.prefix_best}{DATA.TEXT_NOLAPTIME:>{9 + self.extra_width}}",
             width=font_m.width * (11 + self.extra_width) + bar_padx,
             fixed_height=font_m.height,
             offset_y=font_m.voffset,
@@ -79,7 +74,7 @@ class Realtime(Overlay):
 
         # Current time
         self.bar_time_curr = self.set_rawtext(
-            text=f"{TEXT_NOLAPTIME: >{11 + self.extra_width}}",
+            text=f"{DATA.TEXT_NOLAPTIME:>{11 + self.extra_width}}",
             width=font_m.width * (11 + self.extra_width) + bar_padx,
             fixed_height=font_m.height,
             offset_y=font_m.voffset,
@@ -113,28 +108,27 @@ class Realtime(Overlay):
             count=3,
         )
         for idx, bar_time_gap in enumerate(self.bars_time_gap):
-            bar_time_gap.text = SECTOR_ABBR_ID[idx]
+            bar_time_gap.text = DATA.SECTOR_ABBR_ID[idx]
             layout_sector.addWidget(bar_time_gap, 0, idx)
 
         layout.addLayout(layout_laptime, self.wcfg["display_order_target_time"], 1)
         layout.addLayout(layout_sector, self.wcfg["display_order_sector_time"], 1)
 
         # Last data
-        self.last_sector_idx = -1  # previous recorded sector index value
-        self.last_target_time = MAX_SECONDS
+        self.last_sector_index = -1  # previous recorded sector index value
+        self.last_target_time = DATA.MAX_SECONDS
         self.freeze_timer_start = 0  # sector timer start
 
     def post_update(self):
-        self.last_sector_idx = -1
-        self.last_target_time = MAX_SECONDS
+        self.last_sector_index = -1
+        self.last_target_time = DATA.MAX_SECONDS
         self.freeze_timer_start = 0
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
         # Read Sector data
-        lap_stime = api.read.timing.start()
-        lap_etime = api.read.timing.elapsed()
-        laptime_curr = max(lap_etime - lap_stime, 0)
+        elapsed_time = api.read.timing.elapsed()
+        laptime_curr = api.read.timing.current_laptime()
 
         if self.wcfg["enable_all_time_best_sectors"]:
             data = minfo.sectors.allTimeBest
@@ -142,27 +136,30 @@ class Realtime(Overlay):
             data = minfo.sectors.sessionBest
 
         # Triggered when sector changed
-        if self.last_sector_idx != data.sectorIndex:
+        sector_index = data.sectorIndex
+        if self.last_sector_index != sector_index:
 
             # Activate freeze timer, reset sector index
-            self.freeze_timer_start = lap_etime
-            self.last_sector_idx = data.sectorIndex
+            self.freeze_timer_start = elapsed_time
+            self.last_sector_index = sector_index
 
             # Previous sector index
-            prev_s_idx = PREV_SECTOR_INDEX[data.sectorIndex]
+            prev_s_idx = DATA.PREV_SECTOR_INDEX[sector_index]
 
             # Update (time target) best sector text
             if self.wcfg["target_laptime"] == "Theoretical":
-                self.last_target_time = calc.accumulated_sum(data.sectorBestTB, data.sectorIndex)
-                self.update_time_target_gap(self.bar_time_target, data.deltaSectorBestTB, prev_s_idx)
+                self.last_target_time = calc.sector_sum(data.sectorBestTB, sector_index)
+                sector_gap = calc.sector_sum(data.deltaSectorBestTB, prev_s_idx)
+                self.update_time_target_gap(self.bar_time_target, sector_gap)
                 if not data.noDeltaSector:
                     self.update_sector_gap(
                         self.bars_time_gap[prev_s_idx],
                         data.deltaSectorBestTB[prev_s_idx],
                     )
             else:
-                self.last_target_time = calc.accumulated_sum(data.sectorBestPB, data.sectorIndex)
-                self.update_time_target_gap(self.bar_time_target, data.deltaSectorBestPB, prev_s_idx)
+                self.last_target_time = calc.sector_sum(data.sectorBestPB, sector_index)
+                sector_gap = calc.sector_sum(data.deltaSectorBestPB, prev_s_idx)
+                self.update_time_target_gap(self.bar_time_target, sector_gap)
                 if not data.noDeltaSector:
                     self.update_sector_gap(
                         self.bars_time_gap[prev_s_idx],
@@ -170,29 +167,26 @@ class Realtime(Overlay):
                     )
 
             # Freeze previous sector time
-            if valid_sectors(data.sectorPrev[prev_s_idx]):  # valid previous sector time
-                sum_sectortime = calc.accumulated_sum(data.sectorPrev, prev_s_idx)
-                if sum_sectortime < MAX_SECONDS:  # bypass invalid value
-                    laptime_curr = sum_sectortime
-            self.update_time_curr(self.bar_time_curr, laptime_curr, prev_s_idx)
+            sector_gap = calc.sector_sum(data.sectorPrev, prev_s_idx)
+            self.update_time_curr(self.bar_time_curr, sector_gap, prev_s_idx)
 
         # Update freeze timer
         if self.freeze_timer_start:
             # Stop freeze timer after duration
-            freeze_time = self.freeze_duration(data.sectorPrev[data.sectorIndex])
-            if lap_etime - self.freeze_timer_start >= freeze_time:
+            freeze_time = self.freeze_duration(data.sectorPrev[sector_index])
+            if elapsed_time - self.freeze_timer_start >= freeze_time:
                 self.freeze_timer_start = 0  # stop timer
                 # Update target time
                 self.update_time_target(self.bar_time_target, self.last_target_time)
                 # Restore best sector time when cross finish line
-                if data.sectorIndex == 0:
+                if sector_index == 0:
                     if self.wcfg["target_laptime"] == "Theoretical":
                         self.restore_best_sector(data.sectorBestTB)
                     else:
                         self.restore_best_sector(data.sectorBestPB)
         else:
             # Update current sector time
-            self.update_time_curr(self.bar_time_curr, laptime_curr, data.sectorIndex)
+            self.update_time_curr(self.bar_time_curr, laptime_curr, sector_index)
 
     # GUI update methods
     def update_sector_gap(self, target, data):
@@ -207,23 +201,22 @@ class Realtime(Overlay):
         """Current sector time text"""
         if target.last != data:
             target.last = data
-            target.text = f"{SECTOR_ABBR_ID[prev_s_idx]}{calc.sec2laptime(data)[:8 + self.extra_width]: >{9 + self.extra_width}}"
+            target.text = f"{DATA.SECTOR_ABBR_ID[prev_s_idx]}{calc.sec2laptime(data)[:8 + self.extra_width]:>{9 + self.extra_width}}"
             target.update()
 
     def update_time_target(self, target, seconds):
         """Target sector time text"""
-        if seconds < MAX_SECONDS:  # bypass invalid value
-            text_laptime = f"{self.prefix_best}{calc.sec2laptime(seconds)[:8 + self.extra_width]: >{9 + self.extra_width}}"
+        if seconds < DATA.MAX_SECONDS:  # bypass invalid value
+            text_laptime = f"{self.prefix_best}{calc.sec2laptime(seconds)[:8 + self.extra_width]:>{9 + self.extra_width}}"
         else:
-            text_laptime = f"{self.prefix_best}{TEXT_NOLAPTIME: >{9 + self.extra_width}}"
+            text_laptime = f"{self.prefix_best}{DATA.TEXT_NOLAPTIME:>{9 + self.extra_width}}"
         target.text = text_laptime
         target.fg = self.bar_style_time_target[2]
         target.update()
 
-    def update_time_target_gap(self, target, delta_sec, sec_index):
+    def update_time_target_gap(self, target, sector_gap):
         """Target sector time gap"""
-        sector_gap = calc.accumulated_sum(delta_sec, sec_index)
-        target.text = f"{self.prefix_best}{sector_gap: >+{9 + self.extra_width}.3f}"[:11 + self.extra_width]
+        target.text = f"{self.prefix_best}{sector_gap:>+{9 + self.extra_width}.3f}"[:11 + self.extra_width]
         target.fg = self.bar_style_time_target[sector_gap < 0]
         target.update()
 
@@ -236,7 +229,7 @@ class Realtime(Overlay):
                 else:
                     text_s = f"{sector_time[idx]:.3f}"[:7 + self.extra_width]
             else:
-                text_s = SECTOR_ABBR_ID[idx]
+                text_s = DATA.SECTOR_ABBR_ID[idx]
             bar_time_gap.text = text_s
             bar_time_gap.fg, bar_time_gap.bg = self.bar_style_gap[2]
             bar_time_gap.update()

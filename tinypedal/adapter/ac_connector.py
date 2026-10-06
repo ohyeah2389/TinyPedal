@@ -11,6 +11,11 @@ from time import monotonic, sleep
 from pyACSharedMemory import ac_data
 from pyACSharedMemory.ac_mmap import INVALID_INDEX, MAX_VEHICLES, MMapControl
 
+from ..constant import API
+from ..validator import string_converter
+from . import ac_reader
+from ._connector import APIDataReader, Connector
+
 logger = logging.getLogger(__name__)
 
 
@@ -176,4 +181,46 @@ class ACInfo:
             return self._active_state
         data = self.acData
         return self._sync.synced and self.playerIndex >= 0 and data.status == 2
+
+
+class SimAC(Connector):
+    """AC/CSP Shared Memory API"""
+
+    NAME = API.NAME_AC
+    LEGACY = False
+    __slots__ = ("_shmmapi",)
+
+    def __init__(self):
+        self._shmmapi = ACInfo()
+
+    def start(self):
+        self._shmmapi.start()
+
+    def stop(self):
+        self._shmmapi.stop()
+
+    def reader(self) -> APIDataReader:
+        shmm = self._shmmapi
+        return APIDataReader(
+            ac_reader.State(shmm),
+            ac_reader.Brake(shmm),
+            ac_reader.ElectricMotor(shmm),
+            ac_reader.Engine(shmm),
+            ac_reader.Inputs(shmm),
+            ac_reader.Lap(shmm),
+            ac_reader.Session(shmm),
+            ac_reader.Switch(shmm),
+            ac_reader.Timing(shmm),
+            ac_reader.Tyre(shmm),
+            ac_reader.Vehicle(shmm),
+            ac_reader.Wheel(shmm),
+        )
+
+    def setup(self, config: dict):
+        self._shmmapi.setMode(config["access_mode"])
+        self._shmmapi.setStateOverride(config["enable_active_state_override"])
+        self._shmmapi.setActiveState(config["active_state"])
+        self._shmmapi.setPlayerOverride(config["enable_player_index_override"])
+        self._shmmapi.setPlayerIndex(config["player_index"])
+        ac_reader.tostr = string_converter(config["character_encoding"])
 

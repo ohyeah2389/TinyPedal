@@ -17,31 +17,38 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-Constants
+API connector (abstract class)
 """
 
-import platform
+from abc import ABC, abstractmethod
 
-from . import version_check
+from ._reader import APIDataReader
 
 
-# System info
-class PLATFORM:
-    SYSTEM: str = platform.system()
-    WINDOWS: bool = (SYSTEM == "Windows")
+class Connector(ABC):
+    """API Connector"""
 
-# App version
-VERSION = version_check.tinypedal()
+    NAME: str
+    LEGACY: bool
+    __slots__ = ()
 
-# App info
-APP_NAME = "TinyPedal"
-REPO_NAME = "TinyPedal/TinyPedal"
-COPYRIGHT = "Copyright (C) 2022-2026 TinyPedal developers"
-DESCRIPTION = "Free and Open Source telemetry overlay application for racing simulation."
-LICENSE = "Licensed under the GNU General Public License v3.0 or later."
+    @abstractmethod
+    def start(self):
+        """Start API & load info access function"""
 
-# URL
-URL_WEBSITE = f"https://github.com/{REPO_NAME}"
-URL_USER_GUIDE = f"{URL_WEBSITE}/wiki/User-Guide"
-URL_FAQ = f"{URL_WEBSITE}/wiki/Frequently-Asked-Questions"
-URL_RELEASE = f"{URL_WEBSITE}/releases"
+    @abstractmethod
+    def stop(self):
+        """Stop API"""
+
+    @abstractmethod
+    def reader(self) -> APIDataReader:
+        """Data reader"""
+
+    @abstractmethod
+    def setup(self, config: dict):
+        """Setup API parameters"""
+
+    def close(self):
+        """Dereference all instances"""
+        for var in self.__slots__:
+            setattr(self, var, None)

@@ -17,7 +17,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-Steering Widget
+Steering meter Widget
 """
 
 from PySide2.QtCore import QRectF, Qt
@@ -88,7 +88,7 @@ class Realtime(Overlay):
         if self.wcfg["manual_steering_range"] > 0:
             temp_rot_range = self.wcfg["manual_steering_range"]
         else:
-            temp_rot_range = api.read.inputs.steering_range_physical()
+            temp_rot_range = api.read.inputs.steering_range()
 
         # Recalculate scale mark
         if self.wcfg["show_scale_mark"] and self.rot_range != temp_rot_range:
@@ -101,7 +101,7 @@ class Realtime(Overlay):
             self.draw_scale_mark(mark_gap, mark_num)
 
         # Steering
-        temp_raw_steering = api.read.inputs.steering_raw()
+        temp_raw_steering = api.read.inputs.steering()
         if self.raw_steering != temp_raw_steering:
             self.raw_steering = temp_raw_steering
             self.update()

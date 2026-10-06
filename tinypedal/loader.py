@@ -29,7 +29,7 @@ import sys
 import time
 
 from .api_control import api
-from .const_file import FileExt
+from .constant import CONFIG, FILE, PLATFORM
 from .hotkey_control import kctrl
 from .module_control import mctrl, wctrl
 from .overlay_control import octrl
@@ -45,12 +45,62 @@ def int_signal_handler(sign, frame):
     sys.exit()
 
 
-def start():
-    """Start api, modules, widgets, etc. Call once per launch."""
-    logger.info("STARTING............")
+def clear_environment():
+    """Clear any previous environment variable (required after auto-restarted APP)"""
+    os.environ.pop("QT_QPA_PLATFORM", None)
+    os.environ.pop("QT_ENABLE_HIGHDPI_SCALING", None)
+    os.environ.pop("QT_MEDIA_BACKEND", None)
+    os.environ.pop("QT_MULTIMEDIA_PREFERRED_PLUGINS", None)
+
+
+def update_environment():
+    """Update environment before starting GUI"""
+    # Windows only
+    if PLATFORM.WINDOWS:
+        if os.getenv("PYSIDE_OVERRIDE") == "6":
+            # Use "freetype" to avoid high memory usage in pyside6
+            # Match system dark-mode on windows
+            os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=2:fontengine=freetype"
+            os.environ["QT_MEDIA_BACKEND"] = "windows"
+        else:
+            if cfg.compatibility["multimedia_plugin_on_windows"] == "WMF":
+                multimedia_plugin = "windowsmediafoundation"
+            else:
+                multimedia_plugin = "directshow"
+            os.environ["QT_MULTIMEDIA_PREFERRED_PLUGINS"] = multimedia_plugin
+
+    # Linux only
+    else:
+        if cfg.compatibility["enable_x11_platform_plugin_override"]:
+            os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+    # Common
+    if not cfg.application["enable_high_dpi_scaling"]:
+        os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"  # force disable (qt6 only)
+
+
+def start(path_global: str):
+    """Initializing (once per launch)"""
     signal.signal(signal.SIGINT, int_signal_handler)
+
+    # Load global config
+    cfg.path.config = path_global
+    cfg.load_global()
+    cfg.save(config_type=CONFIG.TYPE_CONFIG)
+    cfg.save(config_type=CONFIG.TYPE_SHORTCUTS)
+
+    # Config environment
+    clear_environment()
+    update_environment()
+
+    # Load core GUI
+    from . import ui
+    root = ui.init(cfg.application["enable_high_dpi_scaling"])
+
+    # Start api, modules, widgets, main window in order
+    logger.info("STARTING............")
     # 1 load user preset
-    cfg.set_next_to_load(f"{cfg.preset_files()[0]}{FileExt.JSON}")
+    cfg.set_next_to_load(f"{cfg.preset_files()[0]}{FILE.EXT_JSON}")
     cfg.load_user()
     cfg.save()
     # 2 start api
@@ -61,8 +111,9 @@ def start():
     # 4 start widgets
     wctrl.start()
     # 5 start main window
-    from .ui.app import AppWindow
-    AppWindow()
+    from .ui import app
+    app.AppWindow()
+
     # Finalize loading after main GUI fully loaded
     logger.info("FINALIZING............")
     # 1 Enable overlay control
@@ -72,6 +123,9 @@ def start():
     # 3 Check for updates
     if cfg.application["check_for_updates_on_startup"]:
         update_checker.check(False)
+
+    # Start main loop
+    sys.exit(root.exec_())
 
 
 def close():
@@ -98,10 +152,11 @@ def restart():
             time.sleep(0.01)
     # 2 set restart env for skipping single instance check
     os.environ["TINYPEDAL_RESTART"] = "TRUE"
-    if "tinypedal.exe" in sys.executable:  # if run as exe
-        os.execl(sys.executable, *sys.argv)
-    else:  # if run as script
+    # 3 restart
+    if os.getenv("RUN_FROM_SOURCE"):  # run as script
         os.execl(sys.executable, sys.executable, *sys.argv)
+    else:  # run as exe
+        os.execl(sys.executable, *sys.argv)
 
 
 def reload(reload_preset: bool = False):

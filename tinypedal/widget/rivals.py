@@ -23,7 +23,7 @@ Rivals Widget
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import MAX_SECONDS, TEXT_NOLAPTIME, TEXT_PLACEHOLDER
+from ..constant import DATA
 from ..formatter import random_color_class, shorten_driver_name
 from ..module_info import minfo
 from ..userfile.custom_image import load_brand_logo_image
@@ -485,6 +485,22 @@ class Realtime(Overlay):
                 column=self.wcfg["display_order_incidents"],
                 hide_start=1,
             )
+        # Track limits points
+        if self.wcfg["show_track_limits_points"]:
+            self.bars_tlp = self.set_rawtext(
+                width=4 * font_m.width + bar_padx,
+                fixed_height=font_m.height,
+                offset_y=font_m.voffset,
+                fg_color=self.wcfg["font_color_track_limits_points"],
+                bg_color=self.wcfg["background_color_track_limits_points"],
+                count=self.veh_range,
+            )
+            self.set_grid_layout_table_column(
+                layout=layout,
+                targets=self.bars_tlp,
+                column=self.wcfg["display_order_track_limits_points"],
+                hide_start=1,
+            )
         # Stint laps
         if self.wcfg["show_stint_laps"]:
             self.bars_stl = self.set_rawtext(
@@ -547,16 +563,9 @@ class Realtime(Overlay):
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
-        classes_list = minfo.relative.classes
-        total_cls_idx = len(classes_list)
-        player_idx = minfo.vehicles.playerIndex
-        plr_veh_info = minfo.vehicles.dataSet[player_idx]
         in_race = api.read.session.in_race()
-
-        if player_idx < total_cls_idx:
-            rivals_list = classes_list[player_idx][4:6]
-        else:
-            rivals_list = -1,-1
+        plr_veh_info = minfo.vehicles.dataSet[minfo.vehicles.playerIndex]
+        rivals_list = plr_veh_info.classAheadIndex, plr_veh_info.classBehindIndex
 
         # Standings update
         for idx, rvl_idx in enumerate(rivals_list):
@@ -589,13 +598,13 @@ class Realtime(Overlay):
             # Vehicle name
             if self.wcfg["show_vehicle_name"]:
                 if self.wcfg["show_vehicle_brand_as_name"]:
-                    vehicle_name = veh_info.vehicleBrand
+                    vehicle_name = veh_info.brandName
                 else:
                     vehicle_name = veh_info.vehicleName
                 self.update_veh(self.bars_veh[idx], vehicle_name, state)
             # Brand logo
             if self.wcfg["show_brand_logo"]:
-                self.update_brd(self.bars_brd[idx], veh_info.vehicleBrand, state)
+                self.update_brd(self.bars_brd[idx], veh_info.brandName, state)
             # Time interval
             if self.wcfg["show_time_interval"]:
                 is_ahead = veh_info.positionOverall < plr_veh_info.positionOverall
@@ -643,8 +652,11 @@ class Realtime(Overlay):
                 self.update_psc(self.bars_psc[idx], veh_info.numPitStops, veh_info.pitRequested, state)
             # Delta laptime
             if self.wcfg["show_delta_laptime"]:
-                delta_laptime = tuple(veh_info.lapTimeHistory.delta(plr_veh_info.lapTimeHistory, self.max_delta))
-                self.update_dlt(self.bars_dlt[idx], delta_laptime, state)
+                self.update_dlt(
+                    self.bars_dlt[idx],
+                    veh_info.lapTimeHistory.data, plr_veh_info.lapTimeHistory.data,
+                    veh_info.lapTimeHistory.last, plr_veh_info.lapTimeHistory.last, state,
+                )
             # Remaining energy
             if self.wcfg["show_energy_remaining"]:
                 self.update_nrg(self.bars_nrg[idx], veh_info.energyRemaining, state)
@@ -654,6 +666,9 @@ class Realtime(Overlay):
             # Incidents
             if self.wcfg["show_incidents"]:
                 self.update_icd(self.bars_icd[idx], veh_info.incidents, state)
+            # Track limits points
+            if self.wcfg["show_track_limits_points"]:
+                self.update_tlp(self.bars_tlp[idx], veh_info.trackLimitsPoints, state)
             # Stint laps
             if self.wcfg["show_stint_laps"]:
                 self.update_stl(self.bars_stl[idx], veh_info.currentStintLaps, veh_info.estimatedStintLaps, state)
@@ -678,10 +693,10 @@ class Realtime(Overlay):
             target.last = data
             pos_diff = data[0]
             if pos_diff > 0:
-                text = f"▲{pos_diff: >2}"
+                text = f"▲{pos_diff:>2}"
                 color_index = 1
             elif pos_diff < 0:
-                text = f"▼{-pos_diff: >2}"
+                text = f"▼{-pos_diff:>2}"
                 color_index = 2
             else:
                 text = "- 0"
@@ -701,9 +716,9 @@ class Realtime(Overlay):
             if self.wcfg["driver_name_uppercase"]:
                 text = text.upper()
             if self.wcfg["driver_name_align_center"]:
-                text = text[:self.drv_width]
+                text = f"{text:.{self.drv_width}}"
             else:
-                text = text[:self.drv_width].ljust(self.drv_width)
+                text = f"{text:<{self.drv_width}.{self.drv_width}}"
             target.text = text
             self.toggle_visibility(target, data[-1])
 
@@ -715,9 +730,9 @@ class Realtime(Overlay):
             if self.wcfg["vehicle_name_uppercase"]:
                 text = text.upper()
             if self.wcfg["vehicle_name_align_center"]:
-                text = text[:self.veh_width]
+                text = f"{text:.{self.veh_width}}"
             else:
-                text = text[:self.veh_width].ljust(self.veh_width)
+                text = f"{text:<{self.veh_width}.{self.veh_width}}"
             target.text = text
             self.toggle_visibility(target, data[-1])
 
@@ -760,11 +775,11 @@ class Realtime(Overlay):
             target.text = self.set_laptime(data[0])[:8]
             self.toggle_visibility(target, data[-1])
 
-    def update_dlt(self, target, *data):
+    def update_dlt(self, target, opt_data, plr_data, *data):
         """Vehicle delta laptime"""
         if target.last != data:
             target.last = data
-            target.delta = data[0]
+            target.delta = calc.delta_laptime(opt_data, plr_data, self.max_delta)
             self.toggle_visibility(target, data[-1])
 
     def update_pic(self, target, *data):
@@ -837,7 +852,7 @@ class Realtime(Overlay):
             else:
                 color_index = 0
             if data[0] == 0:
-                text = TEXT_PLACEHOLDER
+                text = DATA.TEXT_PLACEHOLDER
             else:
                 text = f"{data[0]}"
             target.text = text
@@ -877,7 +892,7 @@ class Realtime(Overlay):
             else:  # low
                 color_index = 2
             if hp >= 10:
-                text = TEXT_PLACEHOLDER
+                text = DATA.TEXT_PLACEHOLDER
             else:
                 if hp < 0:
                     hp = 0
@@ -903,6 +918,13 @@ class Realtime(Overlay):
                 text = f"x{score:d}"
             target.text = text
             target.fg, target.bg = self.bar_style_icd[color_index]
+            self.toggle_visibility(target, data[-1])
+
+    def update_tlp(self, target, *data):
+        """Track limits points"""
+        if target.last != data:
+            target.last = data
+            target.text = f"{data[0]:.2f}"[:4]
             self.toggle_visibility(target, data[-1])
 
     def update_stl(self, target, *data):
@@ -982,17 +1004,17 @@ class Realtime(Overlay):
 
     def set_laptime(self, laptime, valid: bool = True):
         """Set lap time"""
-        if 0 < laptime < MAX_SECONDS:
+        if 0 < laptime < DATA.MAX_SECONDS:
             if valid:
                 return calc.sec2laptime_full(laptime)
             return f"*{calc.sec2laptime_full(laptime)}"
-        return TEXT_NOLAPTIME
+        return DATA.TEXT_NOLAPTIME
 
     def set_pittime(self, inpit, pit_time):
         """Set lap time"""
-        if 0 < pit_time < MAX_SECONDS:
-            return f"{'PIT' if inpit else 'OUT'}{pit_time: >5.1f}"
-        return TEXT_NOLAPTIME
+        if 0 < pit_time < DATA.MAX_SECONDS:
+            return f"{'PIT' if inpit else 'OUT'}{pit_time:>5.1f}"
+        return DATA.TEXT_NOLAPTIME
 
     def int_to_next(self, gap_behind_class, is_ahead):
         """Interval to next"""

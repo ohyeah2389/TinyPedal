@@ -23,7 +23,7 @@ Cruise Widget
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import COMPASS_BEARINGS
+from ..constant import DATA
 from ..module_info import minfo
 from ._base import Overlay
 
@@ -64,7 +64,7 @@ class Realtime(Overlay):
 
         # Compass
         if self.wcfg["show_compass"]:
-            text_compass = f"{180:03.0f}°{calc.select_grade(COMPASS_BEARINGS, 180): >2}"
+            text_compass = f"{180:03.0f}°{calc.select_grade(DATA.COMPASS_BEARINGS, 180):>2}"
             self.bar_compass = self.set_rawtext(
                 text=text_compass,
                 width=font_m.width * len(text_compass) + bar_padx,
@@ -80,7 +80,7 @@ class Realtime(Overlay):
 
         # Elevation
         if self.wcfg["show_elevation"]:
-            text_elevation = f"↑{self.unit_dist(0): >5.0f}{self.symbol_dist}"
+            text_elevation = f"↑{self.unit_dist(0):>5.0f}{self.symbol_dist}"
             self.bar_elevation = self.set_rawtext(
                 text=text_elevation,
                 width=font_m.width * len(text_elevation) + bar_padx,
@@ -112,7 +112,7 @@ class Realtime(Overlay):
 
         # Distance into lap
         if self.wcfg["show_distance_into_lap"]:
-            text_lap_distance = f"{self.unit_dist(0): >6.0f}{self.symbol_dist}"
+            text_lap_distance = f"{self.unit_dist(0):>6.0f}{self.symbol_dist}"
             self.bar_lap_distance = self.set_rawtext(
                 text=text_lap_distance,
                 width=font_m.width * len(text_lap_distance) + bar_padx,
@@ -126,27 +126,11 @@ class Realtime(Overlay):
                 column=self.wcfg["display_order_distance_into_lap"],
             )
 
-        # Cornering radius
-        if self.wcfg["show_cornering_radius"]:
-            text_cornering_radius = f"r{self.unit_dist(0): >4.0f}{self.symbol_dist}"
-            self.bar_cornering_radius = self.set_rawtext(
-                text=text_cornering_radius,
-                width=font_m.width * len(text_cornering_radius) + bar_padx,
-                fixed_height=font_m.height,
-                offset_y=font_m.voffset,
-                fg_color=self.wcfg["font_color_cornering_radius"],
-                bg_color=self.wcfg["background_color_cornering_radius"],
-            )
-            self.set_primary_orient(
-                target=self.bar_cornering_radius,
-                column=self.wcfg["display_order_cornering_radius"],
-            )
-
     def timerEvent(self, event):
         """Update when vehicle on track"""
         # Compass
         if self.wcfg["show_compass"]:
-            orientation = api.read.vehicle.orientation_yaw_radians()
+            orientation = api.read.vehicle.orientation_yaw()
             self.update_compass(self.bar_compass, orientation)
 
         # Elevation
@@ -164,47 +148,32 @@ class Realtime(Overlay):
             lap_distance = minfo.delta.lapDistance
             self.update_lap_distance(self.bar_lap_distance, lap_distance)
 
-        # Cornering radius
-        if self.wcfg["show_cornering_radius"]:
-            cornering_radius = minfo.wheels.corneringRadius
-            self.update_cornering_radius(self.bar_cornering_radius, cornering_radius)
-
     # GUI update methods
     def update_compass(self, target, data):
         """Compass"""
         if target.last != data:
             target.last = data
-            degree = 180 - calc.rad2deg(data)
-            target.text = f"{degree:03.0f}°{calc.select_grade(COMPASS_BEARINGS, degree): >2}"
+            degree = 180 - calc.degrees(data)
+            target.text = f"{degree:03.0f}°{calc.select_grade(DATA.COMPASS_BEARINGS, degree):>2}"
             target.update()
 
     def update_elevation(self, target, data):
         """Elevation"""
         if target.last != data:
             target.last = data
-            target.text = f"↑{self.unit_dist(data): >5.0f}{self.symbol_dist}"
+            target.text = f"↑{self.unit_dist(data):>5.0f}{self.symbol_dist}"
             target.update()
 
     def update_odometer(self, target, data):
         """Odometer"""
         if target.last != data:
             target.last = data
-            target.text = f"{min(self.unit_odm(data), self.odm_range): >{self.odm_digits}f}{self.symbol_odm}"
+            target.text = f"{min(self.unit_odm(data), self.odm_range):>{self.odm_digits}f}{self.symbol_odm}"
             target.update()
 
     def update_lap_distance(self, target, data):
         """Distance into lap"""
         if target.last != data:
             target.last = data
-            target.text = f"{self.unit_dist(data): >6.0f}{self.symbol_dist}"
-            target.update()
-
-    def update_cornering_radius(self, target, data):
-        """Cornering radius"""
-        if target.last != data:
-            target.last = data
-            meter = self.unit_dist(data)
-            if meter > 9999:
-                meter = 0
-            target.text = f"r{meter: >4.0f}{self.symbol_dist}"
+            target.text = f"{self.unit_dist(data):>6.0f}{self.symbol_dist}"
             target.update()

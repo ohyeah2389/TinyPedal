@@ -23,7 +23,7 @@ Gear Widget
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import TEXT_NA
+from ..constant import DATA
 from ..module_info import minfo
 from ._base import Overlay
 from ._painter import GearGaugeBar, ProgressBar
@@ -109,7 +109,7 @@ class Realtime(Overlay):
             self.bar_rpmbar = ProgressBar(
                 self,
                 font=font_rpm,
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=gauge_width,
                 height=max(self.wcfg["rpm_bar_height"], 1),
                 offset_x=self.wcfg["rpm_reading_offset_x"],
@@ -139,7 +139,7 @@ class Realtime(Overlay):
             self.bar_battbar = ProgressBar(
                 self,
                 font=font_batt,
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=gauge_width,
                 height=max(self.wcfg["battery_bar_height"], 1),
                 offset_x=self.wcfg["battery_reading_offset_x"],
@@ -165,12 +165,11 @@ class Realtime(Overlay):
                 self.wcfg["consumption_color_normal"],
                 self.wcfg["consumption_color_high"],
             )
-            self.max_cons_factor = calc.ema_factor(self.wcfg["maximum_average_consumption_samples"])
             self.cons_exp = min(max(self.wcfg["consumption_progression_exponential_scale"], 1), 10)
             self.bar_consbar = ProgressBar(
                 self,
                 font=font_cons,
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=gauge_width,
                 height=max(self.wcfg["consumption_bar_height"], 1),
                 offset_x=self.wcfg["consumption_reading_offset_x"],
@@ -186,6 +185,7 @@ class Realtime(Overlay):
                 target=self.bar_consbar,
                 column=self.wcfg["display_order_consumption"],
             )
+            self.calc_ema_fuel_rate = calc.ema_filter(self.wcfg["maximum_average_consumption_samples"])
 
         # Speed limiter
         if self.wcfg["show_speed_limiter"]:
@@ -277,7 +277,7 @@ class Realtime(Overlay):
             target.last = gauge_state
             color_index = self.color_rpm(rpm, gear, speed)
             target.update_input(
-                gear,
+                DATA.GEAR_SEQUENCE(gear, "N"),
                 self.unit_speed(speed),
                 color_index,
                 self.gauge_color[color_index],
@@ -324,8 +324,9 @@ class Realtime(Overlay):
         if target.last != data:
             target.last = data
             # Filter out fluctuation & calculate average max rate
-            if self.max_fuel_rate < data:
-                self.max_fuel_rate += self.max_cons_factor * (data - self.max_fuel_rate)
+            self.ema_fuel_rate = self.calc_ema_fuel_rate(self.ema_fuel_rate, data)
+            if self.max_fuel_rate < self.ema_fuel_rate:
+                self.max_fuel_rate = self.ema_fuel_rate
             if target.show_reading:
                 target.text = f"{data:.{self.decimals_cons}f}"
             rate = data / self.max_fuel_rate if self.max_fuel_rate else 0

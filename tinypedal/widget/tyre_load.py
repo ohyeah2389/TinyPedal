@@ -89,6 +89,7 @@ class Realtime(Overlay):
                 bar_width=bar_width,
                 bar_height=bar_height,
                 offset_y=font_m.voffset,
+                decimals=self.wcfg["decimal_places"],
                 input_color=self.wcfg["highlight_color"],
                 fg_color=self.wcfg["font_color"],
                 bg_color=self.wcfg["background_color"],
@@ -109,7 +110,7 @@ class Realtime(Overlay):
         tload_set = api.read.tyre.load()
         sum_load = sum(tload_set)
         for tload, bar_tload in zip(tload_set, self.bars_tload):
-            tratio = calc.part_to_whole_ratio(tload, sum_load)
+            tratio = calc.part_to_whole_ratio(tload, sum_load) * 100
             if self.wcfg["show_tyre_load_ratio"]:
                 tload = tratio
             self.update_tload(bar_tload, tload, tratio)

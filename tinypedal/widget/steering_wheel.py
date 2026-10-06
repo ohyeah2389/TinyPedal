@@ -24,7 +24,7 @@ from PySide2.QtCore import QRect, Qt
 from PySide2.QtGui import QBrush, QPainter, QPen
 
 from ..api_control import api
-from ..const_file import ImageFile
+from ..constant import FILE
 from ..userfile.custom_image import load_custom_image
 from ._base import Overlay
 
@@ -65,7 +65,7 @@ class Realtime(Overlay):
 
         self.pixmap_wheel = load_custom_image(
             user_file=image_file,
-            default_file=ImageFile.STEERING_WHEEL,
+            default_file=FILE.IMAGE_STEERING_WHEEL,
             width=image_size,
             height=image_size,
         )
@@ -106,10 +106,10 @@ class Realtime(Overlay):
         if self.wcfg["manual_steering_range"] > 0:
             temp_rot_range = self.wcfg["manual_steering_range"]
         else:
-            temp_rot_range = api.read.inputs.steering_range_physical()
+            temp_rot_range = api.read.inputs.steering_range()
 
         # Steering
-        temp_steering_angle = api.read.inputs.steering_raw() * temp_rot_range * 0.5
+        temp_steering_angle = api.read.inputs.steering() * temp_rot_range * 0.5
         if self.steering_angle != temp_steering_angle:
             self.steering_angle = temp_steering_angle
             self.update()

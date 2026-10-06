@@ -38,12 +38,11 @@ from PySide2.QtWidgets import (
 
 from .. import app_signal, loader
 from ..api_control import api
-from ..const_app import APP_NAME, VERSION
-from ..const_file import ConfigType
+from ..constant import APP, CONFIG
 from ..module_control import mctrl, wctrl
 from ..setting import cfg
-from . import set_style_palette, set_style_window
 from ._common import DialogSingleton, UIScaler
+from ._style import set_style_palette, set_style_window
 from .hotkey_view import HotkeyList
 from .menu import APIMenu, ConfigMenu, HelpMenu, OverlayMenu, ToolsMenu, WindowMenu
 from .module_view import ModuleList
@@ -134,6 +133,7 @@ class StatusButtonBar(QStatusBar):
     def __init__(self, parent):
         super().__init__(parent)
         self.button_api = QPushButton("")
+        self.button_api.setObjectName("statusBarButtonAPI")
         self.button_api.clicked.connect(self.refresh)
         self.button_api.setToolTip("Config Telemetry API")
 
@@ -194,7 +194,7 @@ class StatusButtonBar(QStatusBar):
             return
 
         cfg.application["enable_high_dpi_scaling"] = not cfg.application["enable_high_dpi_scaling"]
-        cfg.save(config_type=ConfigType.CONFIG)
+        cfg.save(config_type=CONFIG.TYPE_CONFIG)
         loader.restart()
 
     def toggle_color_theme(self):
@@ -203,7 +203,7 @@ class StatusButtonBar(QStatusBar):
             cfg.application["window_color_theme"] = "Light"
         else:
             cfg.application["window_color_theme"] = "Dark"
-        cfg.save(config_type=ConfigType.CONFIG)
+        cfg.save(config_type=CONFIG.TYPE_CONFIG)
         app_signal.refresh.emit(True)
 
 
@@ -212,9 +212,10 @@ class AppWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"{APP_NAME} v{VERSION}")
+        self.setWindowTitle(f"{APP.TINYPEDAL} v{APP.VERSION}")
         self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.last_style = None
+        self.closing = False
 
         # Status bar
         self.setStatusBar(StatusButtonBar(self))
@@ -360,7 +361,7 @@ class AppWindow(QMainWindow):
                 save_changes = True
 
         if save_changes:
-            cfg.save(0, config_type=ConfigType.CONFIG)
+            cfg.save(0, config_type=CONFIG.TYPE_CONFIG)
 
     def show_app(self):
         """Show app window"""
@@ -371,6 +372,9 @@ class AppWindow(QMainWindow):
     @Slot(bool)  # type: ignore[operator]
     def quit_app(self):
         """Quit manager"""
+        if self.closing:  # one-time quit only
+            return
+        self.closing = True
         loader.close()  # must close this first
         self.save_window_state()
         self.__break_signal()
@@ -389,7 +393,7 @@ class AppWindow(QMainWindow):
     def reload_preset(self, check_singleton: bool):
         """Reload current preset"""
         # Cancel loading while any config dialog opened
-        if check_singleton and DialogSingleton.is_opened(ConfigType.CONFIG):
+        if check_singleton and DialogSingleton.is_opened(CONFIG.TYPE_CONFIG):
             msg_text = "Cannot load preset while Config dialog is opened."
             QMessageBox.warning(self, "Error", msg_text)
             cfg.set_next_to_load("")

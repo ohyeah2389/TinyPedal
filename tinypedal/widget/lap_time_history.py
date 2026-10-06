@@ -23,8 +23,8 @@ Lap time history Widget
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import TEXT_NOLAPTIME
-from ..module_info import ConsumptionDataSet, minfo
+from ..constant import DATA
+from ..module_info import ConsumptionData, minfo
 from ._base import Overlay
 
 
@@ -112,7 +112,7 @@ class Realtime(Overlay):
                 ),
             )
             self.bars_time = self.set_rawtext(
-                text=TEXT_NOLAPTIME,
+                text=DATA.TEXT_NOLAPTIME,
                 width=font_m.width * 8 + bar_padx,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -297,7 +297,7 @@ class Realtime(Overlay):
                 layout.addWidget(cap_temp, row_caption, self.wcfg["display_order_wear"])
 
         # Last data
-        self.empty_data = ConsumptionDataSet()
+        self.empty_data = ConsumptionData()
         self.last_data_version = -1
         self.last_energy_type = None
         self.update_laps_history(())
@@ -308,7 +308,7 @@ class Realtime(Overlay):
 
         # Current laps data
         if self.wcfg["show_laps"]:
-            self.update_laps(self.bars_laps[0], api.read.lap.number())
+            self.update_laps(self.bars_laps[0], api.read.lap.completed() + 1)
         if self.wcfg["show_time"]:
             self.update_time(self.bars_time[0], minfo.delta.lapTimeEstimated)
         if self.wcfg["show_delta"]:
@@ -342,7 +342,7 @@ class Realtime(Overlay):
         """Laps data"""
         if target.last != data:
             target.last = data
-            target.text = f"{data:03.0f}"[:3]
+            target.text = f"{data:03.0f}"
             target.update()
 
     def update_time(self, target, data):

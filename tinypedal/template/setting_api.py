@@ -20,10 +20,10 @@
 Default API setting template
 """
 
-from ..const_api import API_AC_CONFIG, API_LMU_CONFIG, API_RF2_CONFIG
+from ..constant import API
 
 API_DEFAULT = {
-    API_AC_CONFIG: {
+    API.CONFIG_AC: {
         "access_mode": 0,
         "character_encoding": "UTF-8",
         "enable_active_state_override": False,
@@ -31,7 +31,23 @@ API_DEFAULT = {
         "enable_player_index_override": False,
         "player_index": -1,
     },
-    API_LMU_CONFIG: {
+    API.CONFIG_ACC: {
+        "access_mode": 0,
+        "character_encoding": "UTF-8",
+        "enable_active_state_override": False,
+        "active_state": True,
+        "enable_player_index_override": False,
+        "player_index": -1,
+        "enable_udp_api_access": True,
+        "udp_api_update_interval": 200,
+        "url_host": "127.0.0.1",
+        "url_port": 9000,
+        "connection_password": "",
+        "connection_timeout": 60,
+        "connection_retry": 3,
+        "connection_retry_delay": 3,
+    },
+    API.CONFIG_LMU: {
         "access_mode": 0,
         "character_encoding": "UTF-8",
         "enable_active_state_override": False,
@@ -45,13 +61,12 @@ API_DEFAULT = {
         "connection_timeout": 1,
         "connection_retry": 3,
         "connection_retry_delay": 1,
-        "enable_energy_remaining": True,
         "enable_garage_setup_info": True,
         "enable_session_info": True,
         "enable_vehicle_info": True,
         "enable_weather_info": True,
     },
-    API_RF2_CONFIG: {
+    API.CONFIG_RF2: {
         "access_mode": 0,
         "process_id": "",
         "character_encoding": "UTF-8",

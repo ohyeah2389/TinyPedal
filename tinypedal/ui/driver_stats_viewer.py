@@ -38,30 +38,25 @@ from PySide2.QtWidgets import (
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import MAX_SECONDS, TEXT_NOLAPTIME
+from ..constant import DATA
 from ..formatter import strip_invalid_char
+from ..module_info import DriverStats
 from ..setting import cfg
 from ..userfile.driver_stats import (
-    DriverStats,
     load_stats_json_file,
     save_stats_json_file,
-    validate_stats_file,
+    validate_stats_json_file,
 )
-from ._common import (
-    BaseEditor,
-    CompactButton,
-    NumericTableItem,
-    UIScaler,
-)
+from ._common import BaseEditor, CompactButton, NumericTableItem, UIScaler
 from .track_map_viewer import TrackMapViewer
 
 
-def parse_display_value(key: str, value: int | float) -> str | int | float:
+def parse_display_value(key: str, value: float) -> str | float:
     """Parse stats display value"""
     if DriverStats.is_lap_time(key):
-        if 0 < value < MAX_SECONDS:
+        if 0 < value < DATA.MAX_SECONDS:
             return calc.sec2laptime_full(value)
-        return TEXT_NOLAPTIME
+        return DATA.TEXT_NOLAPTIME
     if key == "meters":
         if cfg.units["odometer_unit"] == "Kilometer":
             return round(units.meter_to_kilometer(value), 1)
@@ -178,7 +173,7 @@ class DriverStatsViewer(BaseEditor):
         if stats_user is None:
             return
 
-        self.stats_temp = validate_stats_file(stats_user)
+        self.stats_temp = validate_stats_json_file(stats_user)
 
         if self.selected_stats_key:
             last_selected_stats_key = self.selected_stats_key
@@ -218,7 +213,7 @@ class DriverStatsViewer(BaseEditor):
             # Vehicle stats
             value_raw = veh_data.get(header_key, 0)
             if DriverStats.is_lap_time(header_key) and value_raw <= 0:
-                value_raw = MAX_SECONDS  # correct invalid lap time
+                value_raw = DATA.MAX_SECONDS  # correct invalid lap time
             item = NumericTableItem(value_raw, str(parse_display_value(header_key, value_raw)))
             item.setFlags(flag_selectable)
             item.setTextAlignment(Qt.AlignCenter)
@@ -254,7 +249,7 @@ class DriverStatsViewer(BaseEditor):
 
     def remove_vehicle(self):
         """Remove vehicle and stats"""
-        selected_rows = list(data.row() for data in self.table_stats.selectedIndexes())
+        selected_rows = [data.row() for data in self.table_stats.selectedIndexes()]
         if not selected_rows:
             QMessageBox.warning(self, "Error", "No data selected.")
             return
@@ -277,12 +272,12 @@ class DriverStatsViewer(BaseEditor):
             )
             self.reload_stats()
 
-    def reset_stat(self, row: int, column: int):
-        """Reset stat"""
+    def reset_laptime(self, row: int, column: int):
+        """Reset lap time"""
         selected_vehicle = self.table_stats.item(row, 0).text()
         selected_column = self.table_header_key[column]
         best_laptime = self.table_stats.item(row, column).text()
-        if best_laptime == TEXT_NOLAPTIME:
+        if best_laptime == DATA.TEXT_NOLAPTIME:
             QMessageBox.warning(self, "Error", "No lap time found.")
             return
         msg_text = (
@@ -290,8 +285,7 @@ class DriverStatsViewer(BaseEditor):
             "This cannot be undone!"
         )
         if self.confirm_operation(message=msg_text):
-            default_value = DriverStats.__dict__[selected_column]
-            self.stats_temp[self.selected_stats_key][selected_vehicle][selected_column] = default_value
+            self.stats_temp[self.selected_stats_key][selected_vehicle][selected_column] = DATA.MAX_SECONDS
             save_stats_json_file(
                 stats_user=self.stats_temp,
                 filepath=cfg.path.config,
@@ -326,7 +320,7 @@ class DriverStatsViewer(BaseEditor):
         if action == "Remove Vehicle":
             self.remove_vehicle()
         elif action == "Reset Lap Time":
-            self.reset_stat(item_row, item_column)
+            self.reset_laptime(item_row, item_column)
 
     def open_trackmap(self):
         """Open trackmap, make sure to strip off invalid char from key name"""

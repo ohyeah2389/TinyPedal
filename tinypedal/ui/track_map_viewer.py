@@ -22,7 +22,7 @@ Track map viewer
 
 import os
 
-from PySide2.QtCore import QPoint, QPointF, QRect, Qt, Signal
+from PySide2.QtCore import QPoint, QPointF, QRect, Qt
 from PySide2.QtGui import QPainter, QPainterPath, QPen
 from PySide2.QtWidgets import (
     QAbstractSpinBox,
@@ -41,7 +41,8 @@ from PySide2.QtWidgets import (
 )
 
 from .. import calculation as calc
-from ..const_file import ConfigType, FileExt, FileFilter
+from .. import qt_signal
+from ..constant import CONFIG, FILE
 from ..setting import cfg
 from ..userfile.track_map import load_track_map_file
 from ._common import BaseDialog, CompactButton, UIScaler
@@ -95,7 +96,7 @@ class TrackMapViewer(BaseDialog):
 class MapView(QWidget):
     """Map view"""
 
-    reloaded = Signal(bool)
+    reloaded = qt_signal(bool)
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -326,7 +327,7 @@ class MapView(QWidget):
         if action:
             name = "show_" + action.text().replace(" ", "_").lower()
             self.ecfg[name] = not self.ecfg[name]
-            cfg.save(config_type=ConfigType.CONFIG)
+            cfg.save(config_type=CONFIG.TYPE_CONFIG)
             self.update()
 
     def open_config_dialog(self):
@@ -335,7 +336,7 @@ class MapView(QWidget):
             parent=self,
             key_name="track_map_viewer",
             preset_name=cfg.filename.config,
-            config_type=ConfigType.CONFIG,
+            config_type=CONFIG.TYPE_CONFIG,
             user_setting=cfg.user.config,
             default_setting=cfg.default.config,
             reload_func=self.load_config,
@@ -344,7 +345,7 @@ class MapView(QWidget):
 
     def open_trackmap(self):
         """Open trackmap"""
-        filename_full = QFileDialog.getOpenFileName(self, dir=cfg.path.track_map, filter=FileFilter.SVG)[0]
+        filename_full = QFileDialog.getOpenFileName(self, dir=cfg.path.track_map, filter=FILE.FILTER_SVG)[0]
         if not filename_full:
             return
 
@@ -354,7 +355,7 @@ class MapView(QWidget):
 
     def load_trackmap(self, filepath: str, filename: str):
         """Load trackmap"""
-        if not os.path.exists(f"{filepath}{filename}{FileExt.SVG}"):
+        if not os.path.exists(f"{filepath}{filename}{FILE.EXT_SVG}"):
             msg_text = f"Cannot find track map for<br><b>{filename}</b><br>"
             QMessageBox.warning(self, "Error", msg_text)
             return
@@ -364,7 +365,7 @@ class MapView(QWidget):
             filename=filename,
         )
 
-        if self.raw_coords and len(self.raw_coords) > 9:
+        if len(self.raw_coords) > 9 and self.raw_dists and sector_index:
             self.map_length = self.raw_dists[-1][0]
             self.map_nodes = len(self.raw_coords)
             self.map_filename = filename
@@ -375,7 +376,7 @@ class MapView(QWidget):
             self.map_filename = ""
             msg_text = (
                 "Unable to load track map file from<br>"
-                f"<b>{filepath}{filename}{FileExt.SVG}</b><br><br>"
+                f"<b>{filepath}{filename}{FILE.EXT_SVG}</b><br><br>"
                 "Only support SVG file that generated with TinyPedal."
             )
             QMessageBox.warning(self, "Error", msg_text)
@@ -484,7 +485,7 @@ class MapView(QWidget):
         arc_radius = calc.distance(point_one, arc_center_pos)
         arc_angle = calc.quad_coords_angle(
             arc_center_pos, point_one, point_mid, point_end)
-        yaw_radians = calc.oriyaw2rad(
+        yaw_radians = calc.oriyaw(
             point_sec[1] - point_one[1], point_sec[0] - point_one[0])
         turn_direct = calc.turning_direction(
             yaw_radians, *point_one, *point_end)
@@ -620,7 +621,7 @@ class MapView(QWidget):
 
             center_mark_radius = self.ecfg["center_mark_radius"]
             painter.translate(self.center_x, self.center_y)
-            painter.rotate(calc.rad2deg(yaw_radians))
+            painter.rotate(calc.degrees(yaw_radians))
             painter.drawLine(-center_mark_radius, 0, center_mark_radius, 0)
             painter.drawLine(0, -center_mark_radius, 0, center_mark_radius)
             painter.resetTransform()

@@ -20,10 +20,10 @@
 Roll angle Widget
 """
 
-from functools import partial
-
 from .. import calculation as calc
 from ..api_control import api
+from ..constant import DATA
+from ..module_info import minfo
 from ._base import Overlay
 
 
@@ -98,10 +98,7 @@ class Realtime(Overlay):
             column=self.wcfg["display_order_roll_angle_rear"],
         )
 
-        self.calc_ema_roll = partial(
-            calc.exp_mov_avg,
-            calc.ema_factor(self.wcfg["roll_angle_smoothing_samples"])
-        )
+        self.calc_ema_roll = calc.ema_filter(self.wcfg["roll_angle_smoothing_samples"])
 
         # Roll angle difference
         if self.wcfg["show_roll_angle_difference"]:
@@ -135,18 +132,35 @@ class Realtime(Overlay):
                 target=self.bar_ratio,
                 column=self.wcfg["display_order_roll_angle_ratio"],
             )
-            self.calc_ema_ratio = partial(
-                calc.exp_mov_avg,
-                calc.ema_factor(self.wcfg["roll_angle_ratio_smoothing_samples"])
-            )
+            self.calc_ema_ratio = calc.ema_filter(self.wcfg["roll_angle_ratio_smoothing_samples"])
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
-        height_fl, height_fr, height_rl, height_rr = api.read.wheel.ride_height()
+        rideh_set = api.read.wheel.ride_height()
+        if rideh_set == DATA.WHEELS_ZERO:
+            static_f = self.cfg.user.setting["ride_height"]["static_height_front"]
+            static_r = self.cfg.user.setting["ride_height"]["static_height_rear"]
+            if static_f > 0 < static_r:
+                susp_current = minfo.wheels.currentSuspensionPosition
+                susp_static = minfo.wheels.staticSuspensionPosition
+                rideh_set = (
+                    static_f - susp_current[0] + susp_static[0],
+                    static_f - susp_current[1] + susp_static[1],
+                    static_r - susp_current[2] + susp_static[2],
+                    static_r - susp_current[3] + susp_static[3],
+                )
+
+        wheeltrack_front = minfo.wheels.wheelTrackFront
+        if wheeltrack_front <= 0:
+            wheeltrack_front = self.wcfg["wheel_track_front"]
+
+        wheeltrack_rear = minfo.wheels.wheelTrackRear
+        if wheeltrack_rear <= 0:
+            wheeltrack_rear = self.wcfg["wheel_track_rear"]
 
         # Roll angle
-        rollf_deg = calc.slope_angle(height_fr - height_fl, self.wcfg["wheel_track_front"])
-        rollr_deg = calc.slope_angle(height_rr - height_rl, self.wcfg["wheel_track_rear"])
+        rollf_deg = calc.slope_angle(rideh_set[1] - rideh_set[0], wheeltrack_front)
+        rollr_deg = calc.slope_angle(rideh_set[3] - rideh_set[2], wheeltrack_rear)
 
         ema_rollf_deg = self.calc_ema_roll(self.bar_rollf.last, rollf_deg)
         ema_rollr_deg = self.calc_ema_roll(self.bar_rollr.last, rollr_deg)
@@ -160,12 +174,10 @@ class Realtime(Overlay):
 
         # Roll angle ratio
         if self.wcfg["show_roll_angle_ratio"]:
-            rollf_deg = int(rollf_deg * 100)
-            rollr_deg = int(rollr_deg * 100)
             if rollf_deg < 0 > rollr_deg or rollf_deg > 0 < rollr_deg:
-                ratio = calc.part_to_whole_ratio(abs(rollf_deg), abs(rollf_deg + rollr_deg), 50)
+                ratio = calc.part_to_whole_ratio(rollf_deg, rollf_deg + rollr_deg, 0.5)
             else:
-                ratio = 50
+                ratio = 0.5
             ema_ratio = self.calc_ema_ratio(self.bar_ratio.last, ratio)
             self.update_ratio(self.bar_ratio, ema_ratio, self.prefix_ratio)
 
@@ -181,15 +193,15 @@ class Realtime(Overlay):
         """Roll angle ratio"""
         if target.last != data:
             target.last = data
-            target.text = self.format_ratio(data, prefix)
+            target.text = self.format_ratio(data * 100, prefix)
             target.update()
 
     def format_roll(self, angle, prefix):
         """Format roll angle"""
-        roll_angle = f"{angle:+.{self.decimals}f}"[:self.decimals + 3]
-        return f"{prefix}{roll_angle}{self.degree_sign_text}"
+        roll_angle = f"{angle:+.{self.decimals}f}"
+        return f"{prefix}{roll_angle:.{self.decimals + 3}}{self.degree_sign_text}"
 
     def format_ratio(self, angle, prefix):
         """Format roll angle ratio"""
-        roll_angle = f"{angle:.{self.decimals + 1}f}"[:self.decimals + 3]
-        return f"{prefix}{roll_angle}{self.percent_sign_text}"
+        roll_angle = f"{angle:.{self.decimals + 1}f}"
+        return f"{prefix}{roll_angle:.{self.decimals + 3}}{self.percent_sign_text}"

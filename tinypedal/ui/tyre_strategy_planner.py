@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import os
 
-from PySide2.QtCore import QPoint, QStandardPaths, Qt, Signal, Slot
+from PySide2.QtCore import QPoint, QStandardPaths, Qt, Slot
 from PySide2.QtGui import QBrush, QFont, QKeySequence, QPainter, QPen
 from PySide2.QtWidgets import (
     QAbstractItemView,
@@ -50,7 +50,8 @@ from PySide2.QtWidgets import (
     QWidget,
 )
 
-from ..const_file import ConfigType, FileFilter
+from .. import qt_signal
+from ..constant import CONFIG, FILE
 from ..formatter import format_option_name
 from ..setting import cfg
 from ..userfile.tyre_strategy import (
@@ -90,7 +91,7 @@ def save_tyre_strategy_file_path(filepath: str):
     """Save file path"""
     if filepath != cfg.user.config["tyre_strategy_planner"]["last_file_path"]:
         cfg.user.config["tyre_strategy_planner"]["last_file_path"] = filepath
-        cfg.save(config_type=ConfigType.CONFIG)
+        cfg.save(config_type=CONFIG.TYPE_CONFIG)
 
 
 class TyreNameListItem(QListWidgetItem):
@@ -116,7 +117,7 @@ class TyreNameListItem(QListWidgetItem):
 class TyrePlanTable(QTableWidget):
     """Tyre plan table"""
 
-    refresh = Signal(bool)
+    refresh = qt_signal(bool)
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -919,7 +920,7 @@ class TyreStrategyPlanner(BaseEditor):
         filename_full, file_filter = QFileDialog.getOpenFileName(
             self,
             dir=set_tyre_strategy_file_path(),
-            filter=FileFilter.TYRESTRATEGY,
+            filter=FILE.FILTER_TYRESTRATEGY,
         )
         if not filename_full:
             return
@@ -949,7 +950,7 @@ class TyreStrategyPlanner(BaseEditor):
         filename_full, file_filter = QFileDialog.getSaveFileName(
             self,
             dir=set_tyre_strategy_file_path(filename),
-            filter=FileFilter.TYRESTRATEGY,
+            filter=FILE.FILTER_TYRESTRATEGY,
         )
         if not filename_full:  # save canceled
             return
@@ -983,7 +984,7 @@ class TyreStrategyPlanner(BaseEditor):
         filename_full, file_filter = QFileDialog.getSaveFileName(
             self,
             dir=set_tyre_strategy_file_path(filename),
-            filter=FileFilter.CSV,
+            filter=FILE.FILTER_CSV,
         )
         if not filename_full:  # save canceled
             return

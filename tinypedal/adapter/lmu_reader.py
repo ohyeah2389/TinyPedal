@@ -26,21 +26,28 @@ Notes:
 from __future__ import annotations
 
 from ..calculation import (
+    hypotenuse,
     lap_progress_distance,
     mean,
     min_nonzero,
-    oriyaw2rad,
+    oriyaw,
     slip_angle,
-    vel2speed,
 )
-from ..const_common import MAX_SECONDS, STINT_USAGE_DEFAULT
+from ..constant import DATA
 from ..formatter import strip_invalid_char
-from ..process.weather import WeatherNode
-from ..validator import bytes_to_str as tostr
 from ..validator import infnan_to_zero as rmnan
+from ..validator import string_converter
 from . import _reader
-from .lmu_connector import LMU_COMPOUND_TYPE, LMUInfo
 from .lmu_restapi import RestAPIData
+from .lmu_sharedmemory import LMU_COMPOUND_TYPE, LMUInfo
+
+tostr = string_converter()
+
+LMU_CAR_MODEL_CORRECTION = {
+    "Aston Martin Vantage AMR LMGT": "Aston Martin Vantage AMR LMGT3",
+    "Chevrolet Corvette Z06 LMGT3.": "Chevrolet Corvette Z06 LMGT3.R",
+    "Lamborghini Huracan LMGT3 Evo": "Lamborghini Huracan LMGT3 Evo2",
+}.get
 
 
 class DataAdapter:
@@ -55,8 +62,8 @@ class DataAdapter:
         """Initialize API setting
 
         Args:
-            shmm: shared memory API connector.
-            rest: rest API connector.
+            shmm: shared memory API data.
+            rest: rest API data.
         """
         self.shmm = shmm
         self.rest = rest
@@ -75,19 +82,15 @@ class State(_reader.State, DataAdapter):
         """Is paused"""
         return self.shmm.isPaused
 
-    def desynced(self, index: int | None = None) -> bool:
-        """Is player data desynced from others"""
-        return (
-            abs(self.shmm.lmuTeleVeh().mElapsedTime
-            - self.shmm.lmuTeleVeh(index).mElapsedTime)
-            >= 0.01
-        )
+    def resets(self) -> int:
+        """Number of player vehicle resets"""
+        return self.shmm.vehicleResets
 
     def version(self) -> str:
         """Identify API version"""
         version = str(self.shmm.lmuGeneric.gameVersion)
         if len(version) < 2:
-            return "unknown"
+            return DATA.TEXT_NA
         return f"{version[0]}.{version[1:]}"
 
 
@@ -95,6 +98,10 @@ class Brake(_reader.Brake, DataAdapter):
     """Brake"""
 
     __slots__ = ()
+
+    def compound_name(self, index: int | None = None) -> tuple[str, str]:
+        """Brake compound name, front, rear"""
+        return "", ""
 
     def bias_front(self, index: int | None = None) -> float:
         """Brake bias front (fraction)"""
@@ -213,6 +220,10 @@ class Engine(_reader.Engine, DataAdapter):
         """Water temperature (Celsius)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mEngineWaterTemp)
 
+    def exhaust_temperature(self, index: int | None = None) -> float:
+        """Exhaust temperature (Celsius)"""
+        return 0.0
+
     def lift_and_coast_progress(self, index: int | None = None) -> float:
         """Lift and coast progress (fraction), range 0.0 to 1.0"""
         return self.shmm.lmuTeleVeh(index).mLiftAndCoastProgress / 255
@@ -223,6 +234,11 @@ class Engine(_reader.Engine, DataAdapter):
 
     def fuel_fraction(self, index: int | None = None) -> float:
         """Remaining fuel (fraction)"""
+        data = self.shmm.lmuTeleVeh(index)
+        fuel = data.mFuel
+        capacity = data.mFuelCapacity
+        if fuel > 0 < capacity:
+            return fuel / capacity
         return self.shmm.lmuScorVeh(index).mFuelFraction / 255
 
     def tank_capacity(self, index: int | None = None) -> float:
@@ -236,6 +252,10 @@ class Engine(_reader.Engine, DataAdapter):
     def max_virtual_energy(self) -> float:
         """Maximum virtual energy (joule)"""
         return self.rest.maxVirtualEnergy
+
+    def absolute_refill(self) -> float:
+        """Absolute refill fuel (liter) or virtual energy (percent)"""
+        return self.rest.absoluteRefill
 
 
 class Inputs(_reader.Inputs, DataAdapter):
@@ -268,27 +288,15 @@ class Inputs(_reader.Inputs, DataAdapter):
         return rmnan(self.shmm.lmuTeleVeh(index).mUnfilteredClutch)
 
     def steering(self, index: int | None = None) -> float:
-        """Steering filtered (fraction)"""
-        return rmnan(self.shmm.lmuTeleVeh(index).mFilteredSteering)
-
-    def steering_raw(self, index: int | None = None) -> float:
-        """Steering raw (fraction)"""
+        """Steering (fraction)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mUnfilteredSteering)
 
-    def steering_shaft_torque(self, index: int | None = None) -> float:
-        """Steering shaft torque (Nm)"""
-        return rmnan(self.shmm.lmuTeleVeh(index).mSteeringShaftTorque)
-
-    def steering_range_physical(self, index: int | None = None) -> float:
+    def steering_range(self, index: int | None = None) -> float:
         """Steering physical rotation range (degrees)"""
         rot_range = rmnan(self.shmm.lmuTeleVeh(index).mPhysicalSteeringWheelRange)
         if rot_range <= 0:
             rot_range = self.rest.steeringWheelRange
         return rot_range
-
-    def steering_range_visual(self, index: int | None = None) -> float:
-        """Steering visual rotation range (degrees)"""
-        return rmnan(self.shmm.lmuTeleVeh(index).mVisualSteeringWheelRange)
 
     def force_feedback(self) -> float:
         """Steering force feedback (fraction)"""
@@ -300,13 +308,10 @@ class Lap(_reader.Lap, DataAdapter):
 
     __slots__ = ()
 
-    def number(self, index: int | None = None) -> int:
-        """Current lap number"""
-        return self.shmm.lmuTeleVeh(index).mLapNumber
-
-    def completed_laps(self, index: int | None = None) -> int:
+    def completed(self, index: int | None = None) -> int:
         """Total completed laps"""
-        return self.shmm.lmuScorVeh(index).mTotalLaps
+        # mLapNumber updates at higher rate than mTotalLaps, pick highest
+        return max(self.shmm.lmuTeleVeh(index).mLapNumber, self.shmm.lmuScorVeh(index).mTotalLaps)
 
     def track_length(self) -> float:
         """Full lap or track length (meters)"""
@@ -331,7 +336,10 @@ class Lap(_reader.Lap, DataAdapter):
         scor = self.shmm.lmuScorInfo
         scor_veh = self.shmm.lmuScorVeh(index)
         progress = lap_progress_distance(scor_veh.mLapDist, scor.mLapDist)
-        return rmnan(scor.mMaxLaps - scor_veh.mTotalLaps - progress)
+        laps_left = rmnan(scor.mMaxLaps - scor_veh.mTotalLaps - progress)
+        if laps_left < 0:
+            laps_left = 0.0
+        return laps_left
 
     def sector_index(self, index: int | None = None) -> int:
         """Sector index, 0 = S1, 1 = S2, 2 = S3"""
@@ -342,14 +350,6 @@ class Lap(_reader.Lap, DataAdapter):
         if sector == 1:
             return 0
         return 1
-
-    def behind_leader(self, index: int | None = None) -> int:
-        """Laps behind leader"""
-        return self.shmm.lmuScorVeh(index).mLapsBehindLeader
-
-    def behind_next(self, index: int | None = None) -> int:
-        """Laps behind next place"""
-        return self.shmm.lmuScorVeh(index).mLapsBehindNext
 
     def safety_car_distance(self) -> float:
         """Safety car's distance into lap (meters)"""
@@ -388,14 +388,6 @@ class Session(_reader.Session, DataAdapter):
         """Session elapsed time (seconds)"""
         return rmnan(self.shmm.lmuScorInfo.mCurrentET)
 
-    def start(self) -> float:
-        """Session start time (seconds)"""
-        return rmnan(self.shmm.lmuScorInfo.mStartET)
-
-    def end(self) -> float:
-        """Session end time (seconds)"""
-        return rmnan(self.shmm.lmuScorInfo.mEndET)
-
     def remaining(self) -> float:
         """Session time remaining (seconds), minimum limit to 0"""
         scor = self.shmm.lmuScorInfo
@@ -405,7 +397,7 @@ class Session(_reader.Session, DataAdapter):
         return seconds
 
     def session_type(self) -> int:
-        """Session type, 0 = TESTDAY, 1 = PRACTICE, 2 = QUALIFY, 3 = WARMUP, 4 = RACE"""
+        """Session type, 0 = TESTDAY, 1 = PRACTICE, 2 = QUALIFY, 3 = WARMUP, 4 = RACE, 5 = HOTLAP"""
         session = self.shmm.lmuScorInfo.mSession
         if session >= 10:  # race
             return 4
@@ -459,17 +451,8 @@ class Session(_reader.Session, DataAdapter):
         return any(data == 1 for data in sec_flag)
 
     def start_lights(self) -> int:
-        """Start lights countdown sequence, 0=green flag"""
-        scor = self.shmm.lmuScorInfo
-        # Green flag check
-        if scor.mGamePhase >= 5:  # inaccurate (5fps refresh rate from API)
-            return 0
-        # Workaround for accurate green flag moment (standing-start type only)
-        tele_data = self.shmm.lmuTeleVeh()
-        if tele_data.mElapsedTime - tele_data.mLapStartET >= 0:
-            return 0
-        # Start lights sequence
-        return scor.mNumRedLights - scor.mStartLight + 1
+        """Start lights countdown sequence, 0=green flag, -1=no start lights"""
+        return -1
 
     def track_temperature(self) -> float:
         """Track temperature (Celsius)"""
@@ -487,33 +470,28 @@ class Session(_reader.Session, DataAdapter):
         """
         return rmnan(self.shmm.lmuScorInfo.mRaining)
 
-    def wetness_minimum(self) -> float:
-        """Road minimum wetness (fraction)"""
-        return rmnan(self.shmm.lmuScorInfo.mMinPathWetness)
-
-    def wetness_maximum(self) -> float:
-        """Road maximum wetness (fraction)"""
-        return rmnan(self.shmm.lmuScorInfo.mMaxPathWetness)
-
-    def wetness_average(self) -> float:
-        """Road average wetness (fraction)"""
-        return rmnan(self.shmm.lmuScorInfo.mAvgPathWetness)
-
-    def wetness(self) -> tuple[float, float, float]:
-        """Road wetness set (fraction)"""
+    def wetness(self) -> float:
+        """Road wetness set (fraction), range 0.0 - 1.0"""
         scor = self.shmm.lmuScorInfo
-        return (rmnan(scor.mMinPathWetness),
-                rmnan(scor.mMaxPathWetness),
-                rmnan(scor.mAvgPathWetness))
+        return rmnan(scor.mAvgPathWetness + (scor.mMinPathWetness + scor.mMaxPathWetness) * 0.001)
 
-    def weather_forecast(self) -> tuple[WeatherNode, ...]:
-        """Weather forecast nodes"""
+    def weather_forecast(self) -> tuple[tuple[float, int, float, float], ...]:
+        """Weather forecast nodes, 0=forecast minutes, 1=sky type index, 2=air temperature, 3=rain chance"""
         session_type = self.session_type()
-        if session_type <= 1:  # practice session
-            return self.rest.forecastPractice
-        if session_type == 2:  # qualify session
-            return self.rest.forecastQualify
-        return self.rest.forecastRace  # race session
+        if session_type > 2:  # race/warmup session
+            data = self.rest.forecastRace
+        elif session_type > 1:  # qualify session
+            data = self.rest.forecastQualify
+        else:  # test/practice session
+            data = self.rest.forecastPractice
+        elapsed_time = self.shmm.lmuScorInfo.mCurrentET
+        session_length = self.shmm.lmuScorInfo.mEndET
+        forecast_data = tuple(
+            (minutes, forecast.sky_type, forecast.temperature, forecast.rain_chance)
+            for forecast in data
+            if (minutes := ((forecast.start * session_length - elapsed_time) // 60)) > 0
+        )
+        return forecast_data
 
     def cloud_coverage(self) -> int:
         """Cloud coverage (type index), range 0 to 10
@@ -547,22 +525,22 @@ class Session(_reader.Session, DataAdapter):
         """Track base grip level, convert to fraction 0.0 to 1.0"""
         grip = self.shmm.lmuScorInfo.mTrackGripLevel
         if grip == 1:
-            return 0.25
+            return 0.3
         if grip == 2:
-            return 0.5
+            return 0.6
         if grip == 3:
-            return 0.75
-        if grip == 4:
             return 0.9
+        if grip == 4:
+            return 1.0
         return 0.0
 
-    def track_time(self) -> float:
+    def track_time(self, scale: int = 1) -> float:
         """Track time"""
-        return self.shmm.lmuScorInfo.mTimeOfDay
+        return rmnan(self.shmm.lmuScorInfo.mTimeOfDay)
 
     def time_scale(self) -> int:
         """Time scale"""
-        return max(self.rest.timeScale, 0)
+        return self.shmm.lmuTimeScale.scale
 
     def limits_points(self) -> float:
         """Track limits points per penalty"""
@@ -577,6 +555,14 @@ class Session(_reader.Session, DataAdapter):
         points = self.shmm.lmuScorInfo.mTrackLimitsStepsPerPoint
         if points:
             return self.shmm.lmuTeleVeh(index).mTrackLimitsSteps / points
+        return 0.0
+
+    def wind_direction(self) -> float:
+        """Wind direction (degrees)"""
+        return DATA.FLOAT_INF
+
+    def wind_speed(self) -> float:
+        """Wind speed (m/s)"""
         return 0.0
 
 
@@ -649,9 +635,14 @@ class Switch(_reader.Switch, DataAdapter):
         """Headlights"""
         return self.shmm.lmuTeleVeh(index).mHeadlights
 
-    def ignition_starter(self, index: int | None = None) -> int:
-        """Ignition"""
-        return self.shmm.lmuTeleVeh(index).mIgnitionStarter
+    def ignition(self, index: int | None = None, stall_rpm: float = 100) -> int:
+        """Ignition, 0=engine off, 1=ignition on, 2=engine on"""
+        data = self.shmm.lmuTeleVeh(index)
+        if data.mIgnitionStarter:
+            if data.mEngineRPM > stall_rpm:
+                return 2
+            return 1
+        return 0
 
     def speed_limiter(self, index: int | None = None) -> int:
         """Speed limiter"""
@@ -687,22 +678,29 @@ class Timing(_reader.Timing, DataAdapter):
 
     __slots__ = ()
 
-    def start(self, index: int | None = None) -> float:
-        """Current lap start time (seconds)"""
-        return rmnan(self.shmm.lmuTeleVeh(index).mLapStartET)
-
     def elapsed(self, index: int | None = None) -> float:
-        """Current lap elapsed time (seconds)"""
+        """Current elapsed time (seconds)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mElapsedTime)
+
+    def is_last_valid(self, index: int | None = None) -> bool:
+        """Is last lap time valid"""
+        return self.shmm.lmuScorVeh(index).mLastLapTime > 0
 
     def current_laptime(self, index: int | None = None) -> float:
         """Current lap time (seconds)"""
         tele_veh = self.shmm.lmuTeleVeh(index)
-        return rmnan(tele_veh.mElapsedTime - tele_veh.mLapStartET)
+        laptime = rmnan(tele_veh.mElapsedTime - tele_veh.mLapStartET)
+        if laptime < 0:
+            return 0.0
+        return laptime
 
     def last_laptime(self, index: int | None = None) -> float:
-        """Last lap time (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mLastLapTime)
+        """Last lap time (seconds), positive=valid, negative=invalid"""
+        last_raw = self.shmm.lmuLastLapTime(index)
+        last_valid = self.shmm.lmuScorVeh(index).mLastLapTime
+        if last_valid > 0:
+            return last_valid
+        return -rmnan(last_raw)
 
     def best_laptime(self, index: int | None = None) -> float:
         """Best lap time (seconds)"""
@@ -710,20 +708,20 @@ class Timing(_reader.Timing, DataAdapter):
 
     def reference_laptime(self, index: int | None = None, laptime: float = 0) -> float:
         """Reference lap time (seconds)"""
-        if 0 < laptime < MAX_SECONDS:
+        if 0 < laptime < DATA.MAX_SECONDS:
             return laptime
         init_time = min_nonzero((
             self.best_laptime(index),
-            self.last_laptime(index),
-            MAX_SECONDS,
+            abs(self.last_laptime(index)),
+            DATA.MAX_SECONDS,
         ))
-        if 0 < init_time < MAX_SECONDS:
+        if 0 < init_time < DATA.MAX_SECONDS:
             return init_time
         # Set to estimated laptime only if other laptime not available
         # as estimated laptime can be faster than other laptime
         return min_nonzero((
             self.estimated_laptime(index),
-            MAX_SECONDS,
+            DATA.MAX_SECONDS,
         ))
 
     def estimated_laptime(self, index: int | None = None) -> float:
@@ -734,50 +732,36 @@ class Timing(_reader.Timing, DataAdapter):
         """Estimated time into lap (seconds)"""
         return rmnan(self.shmm.lmuScorVeh(index).mTimeIntoLap)
 
-    def current_sector1(self, index: int | None = None) -> float:
-        """Current lap sector 1 time (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mCurSector1)
-
-    def current_sector2(self, index: int | None = None) -> float:
-        """Current lap sector 1+2 time (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mCurSector2)
-
-    def last_sector1(self, index: int | None = None) -> float:
-        """Last lap sector 1 time (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mLastSector1)
-
-    def last_sector2(self, index: int | None = None) -> float:
-        """Last lap sector 1+2 time (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mLastSector2)
-
-    def best_sector1(self, index: int | None = None) -> float:
-        """Best lap sector 1 time (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mBestSector1)
-
-    def best_sector2(self, index: int | None = None) -> float:
-        """Best lap sector 1+2 time (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mBestSector2)
-
-    def behind_leader(self, index: int | None = None) -> float:
-        """Time behind leader (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mTimeBehindLeader)
-
-    def behind_next(self, index: int | None = None) -> float:
-        """Time behind next place (seconds)"""
-        return rmnan(self.shmm.lmuScorVeh(index).mTimeBehindNext)
+    def last_sector(self, index: int | None = None) -> float:
+        """Last sector time (seconds)"""
+        data = self.shmm.lmuScorVeh(index)
+        # LMU sector index 0 = S3, index 1 = S1, index 2 = S2
+        sector_idx = data.mSector
+        last_sector_time = 0.0
+        # In S1, update S3 data
+        if sector_idx == 1:  # S1
+            last_laptime = data.mLastLapTime
+            last_sector2 = data.mLastSector2
+            if last_laptime > 0 < last_sector2:
+                last_sector_time = last_laptime - last_sector2
+        # In S2, update S1 data
+        elif sector_idx == 2:  # S2
+            curr_sector1 = data.mCurSector1
+            if curr_sector1 > 0:
+                last_sector_time = curr_sector1
+        # In S3, update S2 data
+        elif sector_idx == 0:  # S3
+            curr_sector1 = data.mCurSector1
+            curr_sector2 = data.mCurSector2
+            if curr_sector2 > 0 < curr_sector1:
+                last_sector_time = curr_sector2 - curr_sector1
+        return rmnan(last_sector_time)
 
 
 class Tyre(_reader.Tyre, DataAdapter):
     """Tyre (front left, front right, rear left, rear right)"""
 
     __slots__ = ()
-
-    def compound_index(self, index: int | None = None) -> tuple[int, ...]:
-        """Tyre compound index set"""
-        tele_veh = self.shmm.lmuTeleVeh(index)
-        front = tele_veh.mFrontTireCompoundIndex
-        rear = tele_veh.mRearTireCompoundIndex
-        return front, front, rear, rear
 
     def compound_name(self, index: int | None = None) -> tuple[str, ...]:
         """Tyre compound name set"""
@@ -886,6 +870,16 @@ class Tyre(_reader.Tyre, DataAdapter):
             rmnan(wheel_data[3].mWear),
         )
 
+    def puncture(self, index: int | None = None, threshold: float = 1) -> tuple[bool, ...]:
+        """Tyre puncture state"""
+        wheel_data = self.shmm.lmuTeleVeh(index).mWheels
+        return (
+            wheel_data[0].mPressure <= threshold,
+            wheel_data[1].mPressure <= threshold,
+            wheel_data[2].mPressure <= threshold,
+            wheel_data[3].mPressure <= threshold,
+        )
+
     def carcass_temperature(self, index: int | None = None) -> tuple[float, ...]:
         """Tyre carcass temperature (Celsius)"""
         wheel_data = self.shmm.lmuTeleVeh(index).mWheels
@@ -906,6 +900,16 @@ class Tyre(_reader.Tyre, DataAdapter):
             rmnan(wheel_data[3].mVerticalTireDeflection) * 1000,
         )
 
+    def slip_angle(self, index: int | None = None) -> tuple[float, ...]:
+        """Tyre slip angle (radians)"""
+        wheel_data = self.shmm.lmuTeleVeh(index).mWheels
+        return (
+            rmnan(slip_angle(wheel_data[0].mLateralGroundVel, wheel_data[0].mLongitudinalGroundVel)),
+            rmnan(slip_angle(wheel_data[1].mLateralGroundVel, wheel_data[1].mLongitudinalGroundVel)),
+            rmnan(slip_angle(wheel_data[2].mLateralGroundVel, wheel_data[2].mLongitudinalGroundVel)),
+            rmnan(slip_angle(wheel_data[3].mLateralGroundVel, wheel_data[3].mLongitudinalGroundVel)),
+        )
+
 
 class Vehicle(_reader.Vehicle, DataAdapter):
     """Vehicle"""
@@ -917,7 +921,7 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         data = self.shmm.lmuResults(index)
         return data["contact_vehicle"] + data["track_cut"]
 
-    def is_player(self, index: int=0) -> bool:
+    def is_player(self, index: int = 0) -> bool:
         """Is local player"""
         return self.shmm.playerIndex == index
 
@@ -937,13 +941,14 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         """Driver name"""
         return tostr(self.shmm.lmuScorVeh(index).mDriverName)
 
-    def vehicle_name(self, index: int | None = None) -> str:
-        """Vehicle name"""
+    def team_name(self, index: int | None = None) -> str:
+        """Team name"""
         return tostr(self.shmm.lmuScorVeh(index).mVehicleName)
 
     def vehicle_model(self, index: int | None = None) -> str:
         """Vehicle model name (brand name + model ID)"""
-        return tostr(self.shmm.lmuTeleVeh(index).mVehicleModel)
+        model = tostr(self.shmm.lmuTeleVeh(index).mVehicleModel)
+        return LMU_CAR_MODEL_CORRECTION(model, model)
 
     def class_name(self, index: int | None = None) -> str:
         """Vehicle class name"""
@@ -994,13 +999,9 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         """Estimated pit stop time (seconds)"""
         return self.rest.pitStopTime
 
-    def absolute_refill(self) -> float:
-        """Absolute refill fuel (liter) or virtual energy (percent)"""
-        return self.rest.absoluteRefill
-
-    def stint_usage(self, driver_name: str) -> tuple[float, float, float, float, int]:
-        """Stint usage data"""
-        return self.rest.stintUsage.get(driver_name, STINT_USAGE_DEFAULT)
+    def repair_time(self) -> float:
+        """Scheduled repair time (seconds)"""
+        return self.rest.repairTime
 
     def finish_state(self, index: int | None = None) -> int:
         """Finish state, 0 = none, 1 = finished, 2 = DNF, 3 = DQ"""
@@ -1015,10 +1016,10 @@ class Vehicle(_reader.Vehicle, DataAdapter):
             return 3
         return 0
 
-    def orientation_yaw_radians(self, index: int | None = None) -> float:
+    def orientation_yaw(self, index: int | None = None) -> float:
         """Orientation yaw (radians)"""
         ori = self.shmm.lmuTeleVeh(index).mOri[2]
-        return rmnan(oriyaw2rad(ori.x, ori.z))
+        return rmnan(oriyaw(ori.x, ori.z))
 
     def position_xyz(self, index: int | None = None) -> tuple[float, float, float]:
         """Raw x,y,z position (meters)"""
@@ -1037,15 +1038,15 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         """Vertical axis position (meters) related to world plane"""
         return rmnan(self.shmm.lmuTeleVeh(index).mPos.y)  # in LMU coord system
 
-    def accel_lateral(self, index: int | None = None) -> float:
+    def acceleration_lateral(self, index: int | None = None) -> float:
         """Lateral acceleration (m/s^2)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mLocalAccel.x)  # X in LMU coord system
 
-    def accel_longitudinal(self, index: int | None = None) -> float:
+    def acceleration_longitudinal(self, index: int | None = None) -> float:
         """Longitudinal acceleration (m/s^2)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mLocalAccel.z)  # Z in LMU coord system
 
-    def accel_vertical(self, index: int | None = None) -> float:
+    def acceleration_vertical(self, index: int | None = None) -> float:
         """Vertical acceleration (m/s^2)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mLocalAccel.y)  # Y in LMU coord system
 
@@ -1064,7 +1065,7 @@ class Vehicle(_reader.Vehicle, DataAdapter):
     def speed(self, index: int | None = None) -> float:
         """Speed (m/s)"""
         vel = self.shmm.lmuTeleVeh(index).mLocalVel
-        return rmnan(vel2speed(vel.x, vel.y, vel.z))
+        return rmnan(hypotenuse(vel.x, vel.y, vel.z))
 
     def downforce_front(self, index: int | None = None) -> float:
         """Downforce front (Newtons)"""
@@ -1074,7 +1075,7 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         """Downforce rear (Newtons)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mRearDownforce)
 
-    def damage_severity(self, index: int | None = None) -> tuple[int, int, int, int, int, int, int, int]:
+    def damage_severity(self, index: int | None = None) -> tuple[float, ...]:
         """Damage severity, sort row by row from left to right, top to bottom"""
         data = self.shmm.lmuTeleVeh(index)
         dmg = data.mDentSeverity
@@ -1104,10 +1105,6 @@ class Vehicle(_reader.Vehicle, DataAdapter):
         """Last impact time stamp (seconds)"""
         return rmnan(self.shmm.lmuTeleVeh(index).mLastImpactET)
 
-    def impact_magnitude(self, index: int | None = None) -> float:
-        """Last impact magnitude"""
-        return rmnan(self.shmm.lmuTeleVeh(index).mLastImpactMagnitude)
-
     def impact_position(self, index: int | None = None) -> tuple[float, float]:
         """Last impact position x,y coordinates"""
         pos = self.shmm.lmuTeleVeh(index).mLastImpactPos
@@ -1122,6 +1119,18 @@ class Wheel(_reader.Wheel, DataAdapter):
     """Wheel & suspension (front left, front right, rear left, rear right)"""
 
     __slots__ = ()
+
+    def track_front(self, index: int | None = None) -> float:
+        """Wheel track front (millimeters)"""
+        return 0
+
+    def track_rear(self, index: int | None = None) -> float:
+        """Wheel track rear (millimeters)"""
+        return 0
+
+    def wheelbase(self, index: int | None = None) -> float:
+        """Wheelbase (millimeters)"""
+        return 0
 
     def camber(self, index: int | None = None) -> tuple[float, ...]:
         """Wheel camber (radians)"""
@@ -1143,18 +1152,8 @@ class Wheel(_reader.Wheel, DataAdapter):
             rmnan(wheel_data[3].mToe),
         )
 
-    def toe_symmetric(self, index: int | None = None) -> tuple[float, ...]:
-        """Wheel toe symmetric (radians)"""
-        wheel_data = self.shmm.lmuTeleVeh(index).mWheels
-        return (
-            rmnan(wheel_data[0].mToe),
-            -rmnan(wheel_data[1].mToe),
-            rmnan(wheel_data[2].mToe),
-            -rmnan(wheel_data[3].mToe),
-        )
-
     def rotation(self, index: int | None = None) -> tuple[float, ...]:
-        """Wheel rotation (radians per second)"""
+        """Wheel rotation (radians per second), or angular velocity"""
         wheel_data = self.shmm.lmuTeleVeh(index).mWheels
         return (
             rmnan(wheel_data[0].mRotation),
@@ -1162,54 +1161,6 @@ class Wheel(_reader.Wheel, DataAdapter):
             rmnan(wheel_data[2].mRotation),
             rmnan(wheel_data[3].mRotation),
         )
-
-    def velocity_lateral(self, index: int | None = None) -> tuple[float, ...]:
-        """Lateral velocity (m/s) x"""
-        wheel_data = self.shmm.lmuTeleVeh(index).mWheels
-        return (
-            rmnan(wheel_data[0].mLateralGroundVel),
-            rmnan(wheel_data[1].mLateralGroundVel),
-            rmnan(wheel_data[2].mLateralGroundVel),
-            rmnan(wheel_data[3].mLateralGroundVel),
-        )
-
-    def velocity_longitudinal(self, index: int | None = None) -> tuple[float, ...]:
-        """Longitudinal velocity (m/s) y"""
-        wheel_data = self.shmm.lmuTeleVeh(index).mWheels
-        return (
-            rmnan(wheel_data[0].mLongitudinalGroundVel),
-            rmnan(wheel_data[1].mLongitudinalGroundVel),
-            rmnan(wheel_data[2].mLongitudinalGroundVel),
-            rmnan(wheel_data[3].mLongitudinalGroundVel),
-        )
-
-    def slip_angle_fl(self, index: int | None = None) -> float:
-        """Slip angle (radians) front left"""
-        wheel_data = self.shmm.lmuTeleVeh(index).mWheels[0]
-        return rmnan(slip_angle(
-            wheel_data.mLateralGroundVel,
-            wheel_data.mLongitudinalGroundVel))
-
-    def slip_angle_fr(self, index: int | None = None) -> float:
-        """Slip angle (radians) front right"""
-        wheel_data = self.shmm.lmuTeleVeh(index).mWheels[1]
-        return rmnan(slip_angle(
-            wheel_data.mLateralGroundVel,
-            wheel_data.mLongitudinalGroundVel))
-
-    def slip_angle_rl(self, index: int | None = None) -> float:
-        """Slip angle (radians) rear left"""
-        wheel_data = self.shmm.lmuTeleVeh(index).mWheels[2]
-        return rmnan(slip_angle(
-            wheel_data.mLateralGroundVel,
-            wheel_data.mLongitudinalGroundVel))
-
-    def slip_angle_rr(self, index: int | None = None) -> float:
-        """Slip angle (radians) rear right"""
-        wheel_data = self.shmm.lmuTeleVeh(index).mWheels[3]
-        return rmnan(slip_angle(
-            wheel_data.mLateralGroundVel,
-            wheel_data.mLongitudinalGroundVel))
 
     def ride_height(self, index: int | None = None) -> tuple[float, ...]:
         """Ride height (convert meters to millimeters)"""

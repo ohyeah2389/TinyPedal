@@ -20,11 +20,9 @@
 Wheel toe Widget
 """
 
-from functools import partial
-
 from .. import calculation as calc
-from ..api_control import api
-from ..const_common import TEXT_NA
+from ..constant import DATA
+from ..module_info import minfo
 from ._base import Overlay
 
 
@@ -57,7 +55,7 @@ class Realtime(Overlay):
             )
             font_cap_m = self.get_font_metrics(font_cap)
 
-            cap_toe_in = self.set_rawtext(
+            cap_toe = self.set_rawtext(
                 font=font_cap,
                 text=self.wcfg["caption_text"],
                 fixed_height=font_cap_m.height,
@@ -66,84 +64,89 @@ class Realtime(Overlay):
                 bg_color=self.wcfg["background_color_caption"],
             )
             self.set_primary_orient(
-                target=cap_toe_in,
+                target=cap_toe,
                 column=0,
             )
 
-        # Toe in
-        layout_toe_in = self.set_grid_layout(
+        # Toe angle
+        layout_toe = self.set_grid_layout(
             gap_hori=self.wcfg["horizontal_gap"],
             gap_vert=self.wcfg["vertical_gap"],
         )
-        self.decimals_toe_in = max(self.wcfg["decimal_places_toe_in"], 1)
-        self.bars_toe_in = self.set_rawtext(
-            text=TEXT_NA,
-            width=font_m.width * (3 + self.decimals_toe_in) + bar_padx,
+        self.decimals_toe = max(self.wcfg["decimal_places_toe_angle"], 1)
+        self.bars_toe = self.set_rawtext(
+            text=DATA.TEXT_NA,
+            width=font_m.width * (3 + self.decimals_toe) + bar_padx,
             fixed_height=font_m.height,
             offset_y=font_m.voffset,
-            fg_color=self.wcfg["font_color_toe_in"],
-            bg_color=self.wcfg["background_color_toe_in"],
+            fg_color=self.wcfg["font_color_toe_angle"],
+            bg_color=self.wcfg["background_color_toe_angle"],
             count=4,
             last=0,
         )
         self.set_grid_layout_quad(
-            layout=layout_toe_in,
-            targets=self.bars_toe_in,
+            layout=layout_toe,
+            targets=self.bars_toe,
         )
         self.set_primary_orient(
-            target=layout_toe_in,
+            target=layout_toe,
             column=1,
         )
-        self.calc_ema_toe_in = partial(
-            calc.exp_mov_avg,
-            calc.ema_factor(self.wcfg["toe_in_smoothing_samples"])
-        )
+        self.calc_ema_toe = calc.ema_filter(self.wcfg["toe_angle_smoothing_samples"])
 
         # Total toe angle
         if self.wcfg["show_total_toe_angle"]:
+            self.bar_style_total = (
+                self.wcfg["font_color_total_toe_angle_negative"],
+                self.wcfg["font_color_total_toe_angle_positive"],
+            )
             self.decimals_total = max(self.wcfg["decimal_places_total_toe_angle"], 1)
             self.bars_total = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=font_m.width * (2 + self.decimals_total) + bar_padx,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
-                fg_color=self.wcfg["font_color_total_toe_angle"],
+                fg_color=self.bar_style_total[0],
                 bg_color=self.wcfg["background_color_total_toe_angle"],
                 count=2,
                 last=0,
             )
             self.set_grid_layout_vert(
-                layout=layout_toe_in,
+                layout=layout_toe,
                 targets=self.bars_total,
             )
-            self.calc_ema_total = partial(
-                calc.exp_mov_avg,
-                calc.ema_factor(self.wcfg["total_toe_angle_smoothing_samples"])
-            )
+            self.calc_ema_total = calc.ema_filter(self.wcfg["total_toe_angle_smoothing_samples"])
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
-        # Toe in
-        toe_in_set = api.read.wheel.toe_symmetric()
-        for toe_in, bar_toe_in in zip(toe_in_set, self.bars_toe_in):
-            self.update_toe_in(bar_toe_in, self.calc_ema_toe_in(bar_toe_in.last, toe_in))
+        symmetric = self.wcfg["enable_symmetric_toe_angle"]
+
+        # Toe angle
+        toe_angle_set = minfo.wheels.toeAngle
+        for index, bar_toe in enumerate(self.bars_toe):
+            if symmetric and index % 2:
+                toe_angle = -toe_angle_set[index]
+            else:
+                toe_angle = toe_angle_set[index]
+            self.update_toe(bar_toe, self.calc_ema_toe(bar_toe.last, toe_angle))
 
         # Total toe angle
         if self.wcfg["show_total_toe_angle"]:
-            self.update_total(self.bars_total[0], self.calc_ema_total(self.bars_total[0].last, toe_in_set[0] + toe_in_set[1]))
-            self.update_total(self.bars_total[1], self.calc_ema_total(self.bars_total[1].last, toe_in_set[2] + toe_in_set[3]))
+            self.update_total(self.bars_total[0], self.calc_ema_total(self.bars_total[0].last, minfo.wheels.frontToeAngleDifference))
+            self.update_total(self.bars_total[1], self.calc_ema_total(self.bars_total[1].last, minfo.wheels.rearToeAngleDifference))
 
     # GUI update methods
-    def update_toe_in(self, target, data):
-        """Toe in data"""
+    def update_toe(self, target, data):
+        """Toe angle data"""
         if target.last != data:
             target.last = data
-            target.text = f"{calc.rad2deg(data):+.{self.decimals_toe_in + 1}f}"[:3 + self.decimals_toe_in]
+            target.text = f"{data:+.{self.decimals_toe + 1}f}"[:3 + self.decimals_toe]
             target.update()
 
     def update_total(self, target, data):
         """Total toe angle data"""
         if target.last != data:
             target.last = data
-            target.text = f"{calc.rad2deg(abs(data)):.{self.decimals_total + 1}f}"[:2 + self.decimals_total]
+            target.text = f"{abs(data):.{self.decimals_total + 1}f}"[:2 + self.decimals_total]
+            target.fg = self.bar_style_total[data > 0]
             target.update()

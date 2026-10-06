@@ -22,7 +22,7 @@ Weather Widget
 
 from .. import units
 from ..api_control import api
-from ..const_common import TEXT_TREND_SIGN
+from ..constant import DATA
 from ..module_info import minfo
 from ._base import Overlay
 
@@ -107,7 +107,7 @@ class Realtime(Overlay):
 
             if self.wcfg["show_trend"]:
                 self.bar_temp_trend = self.set_rawtext(
-                    text=TEXT_TREND_SIGN[0],
+                    text=DATA.TREND_SIGN[0],
                     width=font_m.width + bar_padx,
                     fixed_height=font_m.height,
                     offset_y=font_m.voffset,
@@ -140,7 +140,7 @@ class Realtime(Overlay):
 
             if self.wcfg["show_trend"]:
                 self.bar_raininess_trend = self.set_rawtext(
-                    text=TEXT_TREND_SIGN[0],
+                    text=DATA.TREND_SIGN[0],
                     width=font_m.width + bar_padx,
                     fixed_height=font_m.height,
                     offset_y=font_m.voffset,
@@ -173,7 +173,7 @@ class Realtime(Overlay):
 
             if self.wcfg["show_trend"]:
                 self.bar_wetness_trend = self.set_rawtext(
-                    text=TEXT_TREND_SIGN[0],
+                    text=DATA.TREND_SIGN[0],
                     width=font_m.width + bar_padx,
                     fixed_height=font_m.height,
                     offset_y=font_m.voffset,
@@ -190,7 +190,7 @@ class Realtime(Overlay):
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
-        lap_etime = api.read.timing.elapsed()
+        elapsed_time = api.read.timing.elapsed()
 
         # Track temperature
         if self.wcfg["show_temperature"]:
@@ -201,7 +201,7 @@ class Realtime(Overlay):
             self.update_temperature(self.bar_temp, temperature, temp_track, temp_air)
             # Temperature trend
             if self.wcfg["show_trend"]:
-                temp_trend = self.temp_trend.update(round(temperature, 1), lap_etime)
+                temp_trend = self.temp_trend.update(round(temperature, 1), elapsed_time)
                 self.update_temperature_trend(self.bar_temp_trend, temp_trend)
 
         # Rain precipitation
@@ -211,27 +211,29 @@ class Realtime(Overlay):
             self.update_raininess(self.bar_rain, raininess)
             # Rain trend
             if self.wcfg["show_trend"]:
-                rain_trend = self.rain_trend.update(raininess, lap_etime)
+                rain_trend = self.rain_trend.update(raininess, elapsed_time)
                 self.update_raininess_trend(self.bar_raininess_trend, rain_trend)
 
         # Surface wetness
         if self.wcfg["show_wetness"]:
-            wet_min, wet_max, wet_avg = api.read.session.wetness()
+            wetness = api.read.session.wetness()
             # Wetness percentage
-            if wet_avg >= 0.01 or not self.wcfg["show_rubber_coverage_while_dry"]:
-                self.update_wetness(self.bar_wetness, wet_avg)
+            if wetness >= 0.01 or not self.wcfg["show_rubber_coverage_while_dry"]:
+                self.update_wetness(self.bar_wetness, wetness)
             # Rubber coverage percentage
             else:
-                session_type = api.read.session.session_type()
-                rubber_scale = self.rubber_time_scale[session_type]
-                laps_session = rubber_to_laps(self.rubber_starting[session_type], self.rubber_median_laps)
-                if rubber_scale > 0:  # time-scaled coverage
-                    laps_session += (minfo.vehicles.totalCompletedLaps * rubber_scale)
-                self.update_rubber(self.bar_wetness, laps_session)
+                grip_level = api.read.session.grip_level()
+                if grip_level < 0:
+                    session_type = api.read.session.session_type()
+                    rubber_scale = self.rubber_time_scale[session_type]
+                    laps_session = rubber_to_laps(self.rubber_starting[session_type], self.rubber_median_laps)
+                    if rubber_scale > 0:  # time-scaled coverage
+                        laps_session += (minfo.vehicles.totalCompletedLaps * rubber_scale)
+                    grip_level = laps_to_rubber(laps_session, self.rubber_median_laps)
+                self.update_rubber(self.bar_wetness, grip_level)
             # Wet trend
             if self.wcfg["show_trend"]:
-                wetness = wet_min + wet_max + wet_avg
-                wet_trend = self.wet_trend.update(wetness, lap_etime)
+                wet_trend = self.wet_trend.update(wetness, elapsed_time)
                 self.update_wetness_trend(self.bar_wetness_trend, wet_trend)
 
     # GUI update methods
@@ -239,16 +241,16 @@ class Realtime(Overlay):
         """Track & ambient temperature"""
         if target.last != data:
             target.last = data
-            track_temp = f"{self.unit_temp(track):{self.temp_digits}}"[:self.temp_cut]
-            air_temp = f"{self.unit_temp(air):{self.temp_digits}}"[:self.temp_cut]
-            target.text = f"{track_temp}({air_temp}){self.symbol_temp}"
+            track_temp = f"{self.unit_temp(track):{self.temp_digits}}"
+            air_temp = f"{self.unit_temp(air):{self.temp_digits}}"
+            target.text = f"{track_temp:.{self.temp_cut}}({air_temp:.{self.temp_cut}}){self.symbol_temp}"
             target.update()
 
     def update_temperature_trend(self, target, data):
         """Temperature trend"""
         if target.last != data:
             target.last = data
-            target.text = TEXT_TREND_SIGN[data]
+            target.text = DATA.TREND_SIGN[data]
             target.fg = self.bar_style_trend[data]
             target.update()
 
@@ -256,15 +258,15 @@ class Realtime(Overlay):
         """Rain percentage"""
         if target.last != data:
             target.last = data
-            percent_rain = f"{data: >3.0%}"[:3]
-            target.text = f"{self.prefix_rain} {percent_rain}"
+            percent_rain = f"{data:>3.0%}"
+            target.text = f"{self.prefix_rain} {percent_rain:.3}"
             target.update()
 
     def update_raininess_trend(self, target, data):
         """Raininess trend"""
         if target.last != data:
             target.last = data
-            target.text = TEXT_TREND_SIGN[data]
+            target.text = DATA.TREND_SIGN[data]
             target.fg = self.bar_style_trend[data]
             target.update()
 
@@ -272,23 +274,23 @@ class Realtime(Overlay):
         """Surface wetness percentage"""
         if target.last != data:
             target.last = data
-            percent_wet = f"{data: >3.0%}"[:3]
-            target.text = f"{self.prefix_wet} {percent_wet}"
+            percent_wet = f"{data:>3.0%}"
+            target.text = f"{self.prefix_wet} {percent_wet:.3}"
             target.update()
 
     def update_rubber(self, target, data):
         """Surface rubber coverage percentage"""
         if target.last != data:
             target.last = data
-            percent_rubber = f"{laps_to_rubber(data, self.rubber_median_laps): >3.0%}"[:3]
-            target.text = f"{self.prefix_dry} {percent_rubber}"
+            percent_rubber = f"{data:>3.0%}"
+            target.text = f"{self.prefix_dry} {percent_rubber:.3}"
             target.update()
 
     def update_wetness_trend(self, target, data):
         """Surface wetness trend"""
         if target.last != data:
             target.last = data
-            target.text = TEXT_TREND_SIGN[data]
+            target.text = DATA.TREND_SIGN[data]
             target.fg = self.bar_style_trend[data]
             target.update()
 
@@ -342,7 +344,7 @@ class TrendTimer:
 
         Args:
             reading: value.
-            elapsed_time: current lap elapsed time.
+            elapsed_time: current elapsed time.
 
         Returns:
             Trend, 0 = constant, 1 = increasing, -1 = decreasing.

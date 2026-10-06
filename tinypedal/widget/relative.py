@@ -23,12 +23,7 @@ Relative Widget
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import (
-    MAX_SECONDS,
-    REL_TIME_DEFAULT,
-    TEXT_NOLAPTIME,
-    TEXT_PLACEHOLDER,
-)
+from ..constant import DATA
 from ..formatter import random_color_class, shorten_driver_name
 from ..module_info import minfo
 from ..userfile.custom_image import load_brand_logo_image
@@ -555,6 +550,31 @@ class Realtime(Overlay):
                 targets=self.bars_icd,
                 column=self.wcfg["display_order_incidents"],
             )
+        # Track limits points
+        if self.wcfg["show_track_limits_points"]:
+            self.bar_style_tlp = (
+                (
+                    self.wcfg["font_color_track_limits_points"],
+                    self.wcfg["background_color_track_limits_points"],
+                ),
+                (
+                    self.wcfg["font_color_player_track_limits_points"],
+                    self.wcfg["background_color_player_track_limits_points"],
+                ),
+            )
+            self.bars_tlp = self.set_rawtext(
+                width=4 * font_m.width + bar_padx,
+                fixed_height=font_m.height,
+                offset_y=font_m.voffset,
+                fg_color=self.bar_style_tlp[0][0],
+                bg_color=self.bar_style_tlp[0][1],
+                count=self.veh_range,
+            )
+            self.set_grid_layout_table_column(
+                layout=layout,
+                targets=self.bars_tlp,
+                column=self.wcfg["display_order_track_limits_points"],
+            )
         # Stint laps
         if self.wcfg["show_stint_laps"]:
             self.bar_style_stl = (
@@ -683,13 +703,13 @@ class Realtime(Overlay):
             # Vehicle name
             if self.wcfg["show_vehicle_name"]:
                 if self.wcfg["show_vehicle_brand_as_name"]:
-                    vehicle_name = veh_info.vehicleBrand
+                    vehicle_name = veh_info.brandName
                 else:
                     vehicle_name = veh_info.vehicleName
                 self.update_veh(self.bars_veh[idx], vehicle_name, is_lapped, hi_player, state)
             # Brand logo
             if self.wcfg["show_brand_logo"]:
-                self.update_brd(self.bars_brd[idx], veh_info.vehicleBrand, hi_player, state)
+                self.update_brd(self.bars_brd[idx], veh_info.brandName, hi_player, state)
             # Time gap
             if self.wcfg["show_time_gap"]:
                 self.update_gap(self.bars_gap[idx], rel_time_gap, hi_player, state)
@@ -739,6 +759,9 @@ class Realtime(Overlay):
             # Incidents
             if self.wcfg["show_incidents"]:
                 self.update_icd(self.bars_icd[idx], veh_info.incidents, hi_player, state)
+            # Track limits points
+            if self.wcfg["show_track_limits_points"]:
+                self.update_tlp(self.bars_tlp[idx], veh_info.trackLimitsPoints, hi_player, state)
             # Stint laps
             if self.wcfg["show_stint_laps"]:
                 self.update_stl(self.bars_stl[idx], veh_info.currentStintLaps, veh_info.estimatedStintLaps, hi_player, state)
@@ -775,10 +798,10 @@ class Realtime(Overlay):
             if data[-1]:
                 pos_diff = data[0]
                 if pos_diff > 0:
-                    text = f"▲{pos_diff: >2}"
+                    text = f"▲{pos_diff:>2}"
                     color_index = 1
                 elif pos_diff < 0:
-                    text = f"▼{-pos_diff: >2}"
+                    text = f"▼{-pos_diff:>2}"
                     color_index = 2
                 else:
                     text = "- 0"
@@ -810,9 +833,9 @@ class Realtime(Overlay):
                 if self.wcfg["driver_name_uppercase"]:
                     text = text.upper()
                 if self.wcfg["driver_name_align_center"]:
-                    text = text[:self.drv_width]
+                    text = f"{text:.{self.drv_width}}"
                 else:
-                    text = text[:self.drv_width].ljust(self.drv_width)
+                    text = f"{text:<{self.drv_width}.{self.drv_width}}"
             else:
                 text = ""
             target.text = text
@@ -834,9 +857,9 @@ class Realtime(Overlay):
                 if self.wcfg["vehicle_name_uppercase"]:
                     text = text.upper()
                 if self.wcfg["vehicle_name_align_center"]:
-                    text = text[:self.veh_width]
+                    text = f"{text:.{self.veh_width}}"
                 else:
-                    text = text[:self.veh_width].ljust(self.veh_width)
+                    text = f"{text:<{self.veh_width}.{self.veh_width}}"
             else:
                 text = ""
             target.text = text
@@ -1009,7 +1032,7 @@ class Realtime(Overlay):
             if not data[-1]:
                 text = ""
             elif data[0] == 0:
-                text = TEXT_PLACEHOLDER
+                text = DATA.TEXT_PLACEHOLDER
             else:
                 text = f"{data[0]}"
             target.text = text
@@ -1057,7 +1080,7 @@ class Realtime(Overlay):
             if not data[-1]:
                 text = ""
             elif hp >= 10:
-                text = TEXT_PLACEHOLDER
+                text = DATA.TEXT_PLACEHOLDER
             else:
                 if hp < 0:
                     hp = 0
@@ -1087,6 +1110,18 @@ class Realtime(Overlay):
                 text = f"x{score:d}"
             target.text = text
             target.fg, target.bg = self.bar_style_icd[color_index]
+            target.update()
+
+    def update_tlp(self, target, *data):
+        """Track limits points"""
+        if target.last != data:
+            target.last = data
+            if not data[-1]:
+                text = ""
+            else:
+                text = f"{data[0]:.2f}"[:4]
+            target.text = text
+            target.fg, target.bg = self.bar_style_tlp[data[1]]
             target.update()
 
     def update_stl(self, target, *data):
@@ -1185,17 +1220,17 @@ class Realtime(Overlay):
 
     def set_laptime(self, laptime, valid: bool = True):
         """Set lap time"""
-        if 0 < laptime < MAX_SECONDS:
+        if 0 < laptime < DATA.MAX_SECONDS:
             if valid:
                 return calc.sec2laptime_full(laptime)
             return f"*{calc.sec2laptime_full(laptime)}"
-        return TEXT_NOLAPTIME
+        return DATA.TEXT_NOLAPTIME
 
     def set_pittime(self, inpit, pit_time):
         """Set lap time"""
-        if 0 < pit_time < MAX_SECONDS:
-            return f"{'PIT' if inpit else 'OUT'}{pit_time: >5.1f}"
-        return TEXT_NOLAPTIME
+        if 0 < pit_time < DATA.MAX_SECONDS:
+            return f"{'PIT' if inpit else 'OUT'}{pit_time:>5.1f}"
+        return DATA.TEXT_NOLAPTIME
 
 
 def lap_difference_index(is_lapped, offset=2):
@@ -1213,7 +1248,7 @@ def relative_data(ahead_list: list, behind_list: list, player_index: int, max_ah
     ahead_count = len(ahead_list)
     while ahead_count < max_ahead:
         ahead_count += 1
-        yield REL_TIME_DEFAULT
+        yield DATA.RELATIVE_NA
     for ahead_data in ahead_list:
         if ahead_count > max_ahead:
             ahead_count -= 1
@@ -1231,4 +1266,4 @@ def relative_data(ahead_list: list, behind_list: list, player_index: int, max_ah
             break
     while behind_count < max_behind:
         behind_count += 1
-        yield REL_TIME_DEFAULT
+        yield DATA.RELATIVE_NA

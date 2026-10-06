@@ -26,7 +26,7 @@ import logging
 import xml.dom.minidom
 import xml.parsers.expat
 
-from ..const_file import FileExt
+from ..constant import FILE
 from ..validator import invalid_save_name
 
 logger = logging.getLogger(__name__)
@@ -44,8 +44,10 @@ def string_pair_to_float(string: str) -> tuple[float, float]:
     return float(value[0]), float(value[1])
 
 
-def list_pair_to_string(data: tuple | list) -> str:
+def list_pair_to_string(data: tuple | list, decimals: int = -1) -> str:
     """Convert list pair (x,y) to string pair"""
+    if decimals >= 0:
+        return f"{data[0]:.{decimals}f},{data[1]:.{decimals}f}"
     return f"{data[0]},{data[1]}"
 
 
@@ -58,22 +60,25 @@ def points_to_coords(points: str) -> tuple[tuple[float, float], ...]:
     Returns:
         ((x,y), (x,y), ...) raw coordinates.
     """
-    return tuple(map(string_pair_to_float, points.split(" ")))
+    return tuple(string_pair_to_float(xy) for xy in points.split(" "))
 
 
-def coords_to_points(coords: tuple | list) -> str:
+def coords_to_points(coords: tuple | list, decimals: int = -1) -> str:
     """Convert raw coordinates to svg points strings
 
     Args:
         coords: ((x,y), (x,y), ...) raw coordinates.
+        decimals: number of decimal points to keep, -1 = keeping all decimals.
 
     Returns:
         "x,y x,y ..." svg points strings.
     """
-    return " ".join(map(list_pair_to_string, coords))
+    return " ".join(list_pair_to_string(xy, decimals) for xy in coords)
 
 
-def load_track_map_file(filepath: str, filename: str, extension: str = FileExt.SVG):
+def load_track_map_file(
+    filepath: str, filename: str, extension: str = FILE.EXT_SVG
+) -> tuple[tuple, ...]:
     """Load svg track map file (*.svg)"""
     try:
         dom = xml.dom.minidom.parse(f"{filepath}{filename}{extension}")
@@ -89,9 +94,9 @@ def load_track_map_file(filepath: str, filename: str, extension: str = FileExt.S
                 continue
         # Convert to coordinates list
         if not isinstance(svg_coords, str):
-            raise ValueError
+            raise TypeError
         if not isinstance(svg_dists, str):
-            raise ValueError
+            raise TypeError
         raw_coords = points_to_coords(svg_coords)
         raw_dists = points_to_coords(svg_dists)
         sector_index = string_pair_to_int(desc_col[0].childNodes[0].nodeValue)
@@ -100,20 +105,25 @@ def load_track_map_file(filepath: str, filename: str, extension: str = FileExt.S
         logger.info("MISSING: track map (%s) data", extension)
     except (AttributeError, IndexError, ValueError, xml.parsers.expat.ExpatError):
         logger.info("MISSING: invalid track map (%s) data", extension)
-    return None, None, None
+    return (), (), ()
 
 
 def save_track_map_file(
-    filepath: str, filename: str, view_box: str,
-    raw_coords: tuple, raw_dists: tuple, sector_index: tuple,
-    extension: str = FileExt.SVG
+    filepath: str,
+    filename: str,
+    view_box: str,
+    raw_coords: tuple,
+    raw_dists: tuple,
+    sector_index: tuple,
+    decimals: int,
+    extension: str = FILE.EXT_SVG,
 ) -> None:
     """Save track map file (*.svg)"""
     if invalid_save_name(filename):
         return
     # Convert to svg coordinates
-    svg_coords = coords_to_points(raw_coords)
-    svg_dists = coords_to_points(raw_dists)
+    svg_coords = coords_to_points(raw_coords, decimals)
+    svg_dists = coords_to_points(raw_dists, decimals)
     # Create new svg file
     new_svg = xml.dom.minidom.Document()
     # Create comments

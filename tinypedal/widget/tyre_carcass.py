@@ -20,12 +20,10 @@
 Tyre carcass temperature Widget
 """
 
-from functools import partial
-
 from .. import calculation as calc
 from .. import units
 from ..api_control import api
-from ..const_common import TEXT_NA, TEXT_PLACEHOLDER, WHEELS_ZERO
+from ..constant import DATA
 from ..userfile.heatmap import (
     HEATMAP_DEFAULT_TYRE,
     load_heatmap_color,
@@ -84,7 +82,7 @@ class Realtime(Overlay):
         # Tyre carcass temperature
         base_row = 1
         self.bars_ctemp = self.set_rawtext(
-            text=TEXT_NA,
+            text=DATA.TEXT_NA,
             width=font_m.width * text_width + bar_padx,
             fixed_height=font_m.height,
             offset_y=font_m.voffset,
@@ -100,7 +98,7 @@ class Realtime(Overlay):
         # Tyre compound
         if self.wcfg["show_tyre_compound"]:
             self.bars_tcmpd = self.set_rawtext(
-                text=TEXT_PLACEHOLDER,
+                text=DATA.TEXT_PLACEHOLDER,
                 width=font_m.width + bar_padx,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -146,7 +144,7 @@ class Realtime(Overlay):
                 )
             )
             self.bars_rdiff = self.set_rawtext(
-                text=TEXT_NA,
+                text=DATA.TEXT_NA,
                 width=font_m.width * 3 + bar_padx,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
@@ -159,16 +157,13 @@ class Realtime(Overlay):
             for idx, inner in enumerate(layout_inner):
                 inner.addWidget(self.bars_rdiff[idx], base_row, 2 * (idx % 2))
 
-            self.calc_ema_rdiff = partial(
-                calc.exp_mov_avg,
-                calc.ema_factor(self.wcfg["rate_of_change_smoothing_samples"])
-            )
+            self.calc_ema_rdiff = calc.ema_filter(self.wcfg["rate_of_change_smoothing_samples"])
 
         # Last data
         self.last_in_pits = -1
         self.last_compounds = ("", "", "", "")
-        self.last_rtemp = list(WHEELS_ZERO)
-        self.last_lap_etime = 0
+        self.last_rtemp = list(DATA.WHEELS_ZERO)
+        self.last_elapsed_time = 0
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
@@ -197,13 +192,13 @@ class Realtime(Overlay):
 
         # Rate of change
         if self.wcfg["show_rate_of_change"]:
-            lap_etime = api.read.timing.elapsed()
+            elapsed_time = api.read.timing.elapsed()
 
-            if self.last_lap_etime > lap_etime:
-                self.last_lap_etime = lap_etime
-            elif lap_etime - self.last_lap_etime >= 0.1:
-                interval = self.rate_interval / (lap_etime - self.last_lap_etime)
-                self.last_lap_etime = lap_etime
+            if self.last_elapsed_time > elapsed_time:
+                self.last_elapsed_time = elapsed_time
+            elif elapsed_time - self.last_elapsed_time >= 0.1:
+                interval = self.rate_interval / (elapsed_time - self.last_elapsed_time)
+                self.last_elapsed_time = elapsed_time
 
                 for tyre_idx, bar_rdiff in enumerate(self.bars_rdiff):
                     rdiff = self.calc_ema_rdiff(
@@ -219,7 +214,7 @@ class Realtime(Overlay):
         if target.last != data:
             target.last = data
             if data < -100:
-                target.text = TEXT_PLACEHOLDER
+                target.text = DATA.TEXT_PLACEHOLDER
             else:
                 target.text = f"{self.unit_temp(data):0{self.leading_zero}f}{self.sign_text}"
             target.fg, target.bg = calc.select_grade(self.heatmap_styles[index], data)
@@ -229,7 +224,12 @@ class Realtime(Overlay):
         """Rate of change"""
         if target.last != data:
             target.last = data
-            target.text = f"{self.unit_temp(abs(data)):.1f}"[:3].strip(".")
+            temp = self.unit_temp(abs(data))
+            if temp > 9.94:
+                text = f"{temp:.0f}"
+            else:
+                text = f"{temp:.1f}"
+            target.text = text
             target.fg, target.bg = self.bar_style_rtemp[data > 0]
             target.update()
 

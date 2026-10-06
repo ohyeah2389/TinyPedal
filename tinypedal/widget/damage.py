@@ -25,7 +25,7 @@ from PySide2.QtGui import QBrush, QPainter, QPen
 
 from .. import calculation as calc
 from ..api_control import api
-from ..const_common import FLOAT_INF, WHEELS_ZERO
+from ..constant import DATA
 from ._base import Overlay
 from ._common import warning_flash
 
@@ -92,6 +92,10 @@ class Realtime(Overlay):
 
         self.pen_text = QPen()
         self.pen_text.setColor(self.wcfg["font_color_integrity"])
+        self.pen_puncture = QPen()
+        self.pen_puncture.setColor(self.wcfg["puncture_outline_color"])
+        self.pen_puncture.setWidth(max(self.wcfg["puncture_outline_width"], 1))
+        self.pen_puncture.setJoinStyle(Qt.MiterJoin)
         self.brush_cone = QBrush(Qt.SolidPattern)
         self.brush_cone.setColor(self.wcfg["last_impact_cone_color"])
 
@@ -99,15 +103,16 @@ class Realtime(Overlay):
             self.warn_flash = warning_flash(
                 self.wcfg["warning_flash_highlight_duration"],
                 self.wcfg["warning_flash_interval"],
-                FLOAT_INF,
+                DATA.FLOAT_INF,
             )
 
         # Last data
         self.detached_parts = False
         self.damage_aero = -1.0
-        self.damage_body = WHEELS_ZERO * 2
-        self.damage_wheel = WHEELS_ZERO
-        self.damage_susp = WHEELS_ZERO
+        self.damage_body = DATA.WHEELS_ZERO * 2
+        self.damage_wheel = DATA.WHEELS_ZERO
+        self.damage_tyre = DATA.WHEELS_ZERO
+        self.damage_susp = DATA.WHEELS_ZERO
         self.last_impact_time = None
         self.last_impact_expired = True
 
@@ -124,9 +129,11 @@ class Realtime(Overlay):
                 self.last_impact_expired = False
                 update_later = True
 
-            if (not self.last_impact_expired and
-                api.read.timing.elapsed() - self.last_impact_time
-                > self.wcfg["last_impact_cone_duration"]):
+            if (
+                not self.last_impact_expired
+                and api.read.timing.elapsed() - self.last_impact_time
+                > self.wcfg["last_impact_cone_duration"]
+            ):
                 self.last_impact_expired = True
                 update_later = True
 
@@ -146,6 +153,12 @@ class Realtime(Overlay):
         temp_damage_wheel = api.read.wheel.is_detached()
         if self.damage_wheel != temp_damage_wheel:
             self.damage_wheel = temp_damage_wheel
+            update_later = True
+
+        # Damage tyre
+        temp_damage_tyre = api.read.tyre.puncture()
+        if self.damage_tyre != temp_damage_tyre:
+            self.damage_tyre = temp_damage_tyre
             update_later = True
 
         # Damage suspension
@@ -190,15 +203,21 @@ class Realtime(Overlay):
 
     def draw_damage_wheel(self, painter):
         """Draw damage wheel"""
-        for rect_wheel, damage_wheel, damage_susp in zip(self.rects_wheels, self.damage_wheel, self.damage_susp):
-            painter.fillRect(rect_wheel, self.color_damage_wheel(damage_wheel, damage_susp))
+        for rect_wheel, damage_wheel, damage_tyre, damage_susp in zip(
+            self.rects_wheels, self.damage_wheel, self.damage_tyre, self.damage_susp
+        ):
+            if damage_tyre and not damage_wheel:
+                painter.setPen(self.pen_puncture)
+                painter.drawRect(rect_wheel)
+            else:
+                painter.fillRect(rect_wheel, self.color_damage_wheel(damage_wheel, damage_susp))
 
     def draw_impact_cone(self, painter):
         """Draw impact cone"""
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setPen(Qt.NoPen)
         painter.setBrush(self.brush_cone)
-        raw_angle = calc.rad2deg(calc.oriyaw2rad(*api.read.vehicle.impact_position()))
+        raw_angle = calc.degrees(calc.oriyaw(*api.read.vehicle.impact_position()))
         start_angle = 16 * (raw_angle - 90 - self.impact_cone_angle * 0.5)
         length_angle = 16 * self.impact_cone_angle
         painter.drawPie(self.rect_impact_cone, start_angle, length_angle)
@@ -217,18 +236,19 @@ class Realtime(Overlay):
     # Additional methods
     def color_damage_body(self, value: int) -> str:
         """Body damage color"""
-        # light body damage
-        if value == 1:
-            return self.wcfg["body_color_damage_light"]
-        # heavy body damage
-        if value == 2:
-            return self.wcfg["body_color_damage_heavy"]
         # body parts detached
-        if value >= 3:
-            self.detached_parts = True
-            if self.wcfg["show_detached_warning_flash"] and self.warn_flash.send(True):
-                return self.wcfg["warning_color_detached"]
+        if value > 2:
+            if self.wcfg["show_detached_warning_flash"]:
+                self.detached_parts = True
+                if self.warn_flash.send(True):
+                    return self.wcfg["warning_color_detached"]
             return self.wcfg["body_color_detached"]
+        # heavy body damage
+        if value > 1:
+            return self.wcfg["body_color_damage_heavy"]
+        # light body damage
+        if value > 0:
+            return self.wcfg["body_color_damage_light"]
         # no damage
         return self.wcfg["body_color"]
 
@@ -236,9 +256,10 @@ class Realtime(Overlay):
         """Wheel and suspension damage color"""
         # wheel detached
         if wheel_detached:
-            self.detached_parts = True
-            if self.wcfg["show_detached_warning_flash"] and self.warn_flash.send(True):
-                return self.wcfg["warning_color_detached"]
+            if self.wcfg["show_detached_warning_flash"]:
+                self.detached_parts = True
+                if self.warn_flash.send(True):
+                    return self.wcfg["warning_color_detached"]
             return self.wcfg["wheel_color_detached"]
         # no damage
         if susp_damage < self.wcfg["suspension_damage_light_threshold"]:

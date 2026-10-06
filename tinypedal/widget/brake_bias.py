@@ -21,8 +21,6 @@ Brake bias Widget
 """
 
 from ..api_control import api
-from ..module_info import minfo
-from ..validator import generator_init
 from ._base import Overlay
 
 
@@ -74,9 +72,10 @@ class Realtime(Overlay):
         # Baseline bias delta
         if self.wcfg["show_baseline_bias_delta"]:
             text_delta = self.format_bias_delta(0)
+            self.width_delta = len(text_delta)
             self.bar_delta = self.set_rawtext(
                 text=text_delta,
-                width=font_m.width * len(text_delta) + bar_padx,
+                width=font_m.width * self.width_delta + bar_padx,
                 fixed_height=font_m.height,
                 offset_y=font_m.voffset,
                 fg_color=self.wcfg["font_color_baseline_bias_delta"],
@@ -105,10 +104,6 @@ class Realtime(Overlay):
 
         # Last data
         self.baseline_bias = 0
-        self.brake_bmigt = brake_migration(self.wcfg["electric_braking_allocation"])
-
-    def post_update(self):
-        self.brake_bmigt.send(-1)
 
     def timerEvent(self, event):
         """Update when vehicle on track"""
@@ -130,8 +125,6 @@ class Realtime(Overlay):
         # Brake migration
         if self.wcfg["show_brake_migration"]:
             bmigt = api.read.brake.migration()
-            if bmigt < 0:
-                bmigt = self.brake_bmigt.send(bbias) * 100
             self.update_bmigt(self.bar_bmigt, bmigt)
 
     # GUI update methods
@@ -146,7 +139,7 @@ class Realtime(Overlay):
         """Baseline bias delta"""
         if target.last != data:
             target.last = data
-            target.text = self.format_bias_delta(data)
+            target.text = self.format_bias_delta(data)[:self.width_delta]
             target.update()
 
     def update_bmigt(self, target, data):
@@ -171,56 +164,5 @@ class Realtime(Overlay):
 
     def format_brake_migt(self, value: float) -> str:
         """Format brake migration"""
-        reading = f"{value:.{self.decimals_migt}f}"[:2 + self.decimals_migt]
-        return f"{self.prefix_migt}{reading}{self.suffix_migt}"
-
-
-@generator_init
-def brake_migration(ebrake_alloc: int):
-    """Brake migration detection & calculation
-
-    Args:
-        ebrake_alloc: electric braking allocation, -1 = auto detect, 0 = front, 1 = rear.
-    """
-    bpres_max = 0.0
-    bpres_scale = 1.0
-    migration = 0.0
-    ebrake_alloc = ebrake_alloc
-    auto_detect = bool(ebrake_alloc == -1)
-
-    while True:
-        brake_bias = yield migration
-        brake_raw = api.read.inputs.brake_raw()
-        brake_pres = api.read.brake.pressure()
-        bpres_sum = sum(brake_pres)
-
-        # Reset
-        if brake_bias < 0:
-            bpres_max = 0.0
-            bpres_scale = 1.0
-
-        if bpres_max < bpres_sum:
-            bpres_max = bpres_sum
-            bpres_scale = 2 / bpres_sum
-
-        if brake_raw > max(brake_pres) > 0:
-            max_front = max(brake_pres[:2])
-            max_rear = max(brake_pres[2:])
-
-            if auto_detect and minfo.hybrid.motorState == 3 and max_rear > 0:
-                max_brake_ratio = max_front / max_rear
-                if max_brake_ratio < 0.25:
-                    ebrake_alloc = 0  # front ebrake
-                elif max_brake_ratio > 4:
-                    ebrake_alloc = 1  # rear ebrake
-
-            if ebrake_alloc == 0:
-                bias_rear = max_rear * bpres_scale
-                bias_front_live = 1 - bias_rear / brake_raw
-            else:
-                bias_front = max_front * bpres_scale
-                bias_front_live = bias_front / brake_raw
-
-            migration = max(bias_front_live - brake_bias, +0)
-        else:
-            migration = 0
+        reading = f"{value:.{self.decimals_migt}f}"
+        return f"{self.prefix_migt}{reading:.{2 + self.decimals_migt}}{self.suffix_migt}"
