@@ -14,7 +14,7 @@ from ..validator import string_converter
 from . import _reader
 
 if TYPE_CHECKING:
-    from .ac_connector import ACInfo
+    from .ac_sharedmemory import ACInfo
 
 tostr = string_converter()
 
